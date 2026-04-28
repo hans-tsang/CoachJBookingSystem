@@ -1,0 +1,63 @@
+// HYROX Bookings — Prisma schema
+// SQLite, single coach, weekly Saturday training
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Setting {
+  key   String @id
+  value String
+}
+
+// Settings keys used at runtime:
+// - gymLocation        : string
+// - trainingDate       : ISO date (YYYY-MM-DD) of next Saturday
+// - coachFee           : integer (HKD whole dollars), stored as string
+// - gymFee             : integer (HKD whole dollars), stored as string
+// - adminPasswordHash  : bcrypt hash
+
+model Slot {
+  id        String    @id @default(cuid())
+  date      DateTime
+  time      String
+  capacity  Int
+  order     Int
+  bookings  Booking[]
+  createdAt DateTime  @default(now())
+
+  @@unique([date, time])
+}
+
+// Booking statuses (stored as string): "Confirmed" | "Waitlist" | "Cancelled"
+// Payment methods (stored as string):   "PayMe" | "FPS" | "Cash" | "Other"
+
+model Booking {
+  id        String   @id @default(cuid())
+  slotId    String
+  slot      Slot     @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  name      String
+  whatsapp  String
+  email     String?
+  uber      Boolean  @default(false)
+  payment   String   @default("PayMe")
+  amount    Int?
+  paid      Boolean  @default(false)
+  status    String   @default("Confirmed")
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([slotId, status, createdAt])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  action    String
+  payload   String
+  createdAt DateTime @default(now())
+}
