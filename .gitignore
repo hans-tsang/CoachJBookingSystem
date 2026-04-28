@@ -13,3 +13,4 @@ prisma/dev.db-journal
 data/
 coverage/
 .vitest-cache/
+tsconfig.tsbuildinfo
