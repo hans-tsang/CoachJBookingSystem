@@ -5,7 +5,7 @@ workflow. One coach manages slots, ~30 members book per week, and a waitlist
 auto-promotes when someone cancels.
 
 **Stack:** Next.js 16 (App Router, Server Actions) · TypeScript (strict) ·
-Tailwind CSS v4 (`@theme`) · Prisma 5 + SQLite · Zod · bcrypt cookie auth ·
+Tailwind CSS v4 (`@theme`) · Prisma 5 + Postgres · Zod · bcrypt cookie auth ·
 Resend (pluggable `EmailProvider`) · Vitest · Docker.
 
 ---
@@ -37,14 +37,16 @@ Resend (pluggable `EmailProvider`) · Vitest · Docker.
 
 ## Local development
 
-Requirements: **Node 20+**, **pnpm 9+**.
+Requirements: **Node 20+**, **pnpm 9+**, a **Postgres** database (local or
+hosted — Neon / Supabase / Vercel Postgres all work).
 
 ```bash
 pnpm install
 cp .env.example .env
-# Edit .env — at minimum set SESSION_SECRET to a long random string.
+# Edit .env — set DATABASE_URL to your Postgres connection string and
+# SESSION_SECRET to a long random value (e.g. `openssl rand -hex 32`).
 
-# Create the SQLite DB and apply migrations:
+# Apply migrations to your database:
 pnpm db:migrate
 
 # Seed default settings + 3 Saturday slots:
@@ -79,7 +81,7 @@ See `.env.example`. Highlights:
 
 | Variable                  | Required | Notes                                                                                  |
 | ------------------------- | -------- | -------------------------------------------------------------------------------------- |
-| `DATABASE_URL`            | yes      | SQLite path. In Docker, `file:/app/data/prod.db`.                                      |
+| `DATABASE_URL`            | yes      | Postgres connection string. Example: `postgresql://user:pass@host:5432/db?sslmode=require`. |
 | `SESSION_SECRET`          | yes      | ≥ 16 chars. Used to HMAC-sign session cookies. Rotate to log everyone out.             |
 | `ADMIN_PASSWORD_INITIAL`  | first run only | Used **only** if no admin password hash exists. Set once, then change in admin. |
 | `RESEND_API_KEY`          | optional | If unset, emails are logged to stdout instead of sent.                                 |
@@ -98,12 +100,55 @@ See `.env.example`. Highlights:
    environment.
 
 To **reset** the admin password if you've lost it, delete the
-`adminPasswordHash` row from the SQLite DB and restart the app with
+`adminPasswordHash` row from your Postgres database and restart the app with
 `ADMIN_PASSWORD_INITIAL` set:
 
-```bash
-sqlite3 ./data/prod.db "DELETE FROM Setting WHERE key='adminPasswordHash';"
+```sql
+DELETE FROM "Setting" WHERE key = 'adminPasswordHash';
 ```
+
+---
+
+## Deploy to Vercel
+
+This project is configured to run on Vercel. The app needs a hosted Postgres
+database — **Neon** (free tier) and **Vercel Postgres** are both good fits.
+
+1. **Create a Postgres database** (Neon, Vercel Postgres, Supabase, etc.) and
+   copy its connection string. Make sure it includes `sslmode=require`.
+2. **Import the repo into Vercel** (Add New → Project → import from GitHub).
+   The framework preset auto-detects Next.js.
+3. **Set Environment Variables** in Vercel → Project Settings → Environment
+   Variables (apply to Production + Preview + Development as needed):
+
+   | Name                     | Value                                               |
+   | ------------------------ | --------------------------------------------------- |
+   | `DATABASE_URL`           | Your Postgres connection string                     |
+   | `SESSION_SECRET`         | `openssl rand -hex 32`                              |
+   | `ADMIN_PASSWORD_INITIAL` | A password you choose for the first admin login    |
+   | `RESEND_API_KEY`         | (optional) Resend API key, blank to log instead    |
+   | `EMAIL_FROM`             | (optional) e.g. `HYROX <onboarding@resend.dev>`     |
+   | `OWNER_EMAIL`            | (optional) Your email                              |
+   | `PUBLIC_BASE_URL`        | (optional) Your final URL                          |
+
+4. **Deploy.** The build command in `vercel.json` runs
+   `prisma generate && prisma migrate deploy && next build`, so migrations are
+   applied to your Postgres database on every deploy.
+5. **Seed the database once** (after the first successful deploy), from your
+   local machine, against the production DB:
+
+   ```bash
+   DATABASE_URL="<your-prod-postgres-url>" pnpm db:seed
+   ```
+
+   This inserts default settings and the three Saturday slots. You only need
+   to do this on the first deploy.
+6. Visit `/admin/login`, sign in with `ADMIN_PASSWORD_INITIAL`, then change
+   the password under **Settings**.
+
+> **Note:** SQLite (`file:./dev.db`) does **not** work on Vercel — the
+> serverless filesystem is read-only/ephemeral. You must use Postgres (or
+> another network-reachable database) when deploying to Vercel.
 
 ---
 
@@ -112,6 +157,7 @@ sqlite3 ./data/prod.db "DELETE FROM Setting WHERE key='adminPasswordHash';"
 ```bash
 # 1. Provide secrets
 cat > .env <<'EOF'
+DATABASE_URL=postgresql://user:pass@host:5432/db?sslmode=require
 SESSION_SECRET=$(openssl rand -hex 32)
 ADMIN_PASSWORD_INITIAL=change-me-on-first-login
 RESEND_API_KEY=
@@ -126,36 +172,18 @@ docker compose up -d --build
 curl -fsS http://localhost:3000/api/health
 ```
 
-The container runs as a non-root user (`nextjs:1001`), persists data to the
-`./data` volume on the host, and applies pending Prisma migrations on every
-start (`prisma migrate deploy`). The healthcheck probes `/api/health` every 30s.
+The container runs as a non-root user (`nextjs:1001`) and applies pending Prisma
+migrations against `DATABASE_URL` on every start (`prisma migrate deploy`). The
+healthcheck probes `/api/health` every 30s.
 
 Front it with Nginx / Cloudflare; only `:3000` needs to be reachable from your
 reverse proxy.
 
-### SQLite backup strategy
+### Backups
 
-The entire database is a single file: `./data/prod.db`.
-
-**Online snapshot (recommended)** — uses SQLite's `.backup` to produce a
-consistent copy without stopping the app:
-
-```bash
-docker exec hyrox-bookings sh -c \
-  'apt-get install -y sqlite3 >/dev/null 2>&1; \
-   sqlite3 /app/data/prod.db ".backup /app/data/backup-$(date +%F).db"'
-cp ./data/backup-*.db /your/offsite/location/
-```
-
-**Cold copy** — if the app is stopped, just copy the file:
-
-```bash
-docker compose stop app
-cp ./data/prod.db /your/offsite/location/prod-$(date +%F).db
-docker compose start app
-```
-
-A cron-driven daily snapshot + weekly off-site sync is plenty for this scale.
+Use your Postgres provider's backup tooling (e.g. `pg_dump`, Neon point-in-time
+restore, managed snapshots). The application stores no state outside the
+database.
 
 ### Updating
 
@@ -208,17 +236,18 @@ docker-compose.yml   ./data volume mount, env wiring
 pnpm test
 ```
 
-The suite covers:
+The pure unit suite (`formatRoster`) always runs.
 
-- `formatRoster` — exact WhatsApp output (snapshot), partial slots, FULL marker,
-  multi-slot ordering, cancelled-row exclusion, createdAt ordering.
-- Capacity math — Confirmed up to capacity, then Waitlist with correct positions.
-- Duplicate detection — same `(name + whatsapp)` in same slot rejected.
-- Waitlist promotion — oldest Waitlist promoted on Confirmed cancel; emails sent.
-- Audit log — `book`, `cancel`, `promote`, `markPaid` rows are written.
+The booking integration suite (capacity math, waitlist promotion, duplicate
+detection, audit log) requires a real Postgres database. Provide one via
+`TEST_DATABASE_URL` and the tests will push the schema to it before each run:
 
-The booking suite spins up a real on-disk SQLite DB via `prisma db push`, so it
-exercises actual transactions.
+```bash
+TEST_DATABASE_URL="postgresql://user:pass@localhost:5432/hyrox_test" pnpm test
+```
+
+When `TEST_DATABASE_URL` is unset the integration tests are skipped (not failed)
+so `pnpm test` still works on a fresh clone.
 
 ---
 

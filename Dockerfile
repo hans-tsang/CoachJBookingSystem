@@ -28,8 +28,7 @@ WORKDIR /app
 ENV NODE_ENV=production \
     PORT=3000 \
     HOSTNAME=0.0.0.0 \
-    NEXT_TELEMETRY_DISABLED=1 \
-    DATABASE_URL="file:/app/data/prod.db"
+    NEXT_TELEMETRY_DISABLED=1
 
 # OpenSSL is required by Prisma's query engine.
 RUN apt-get update && apt-get install -y --no-install-recommends \

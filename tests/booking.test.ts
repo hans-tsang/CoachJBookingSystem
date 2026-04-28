@@ -1,14 +1,17 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from "vitest";
 import { execSync } from "node:child_process";
-import path from "node:path";
-import fs from "node:fs";
-import os from "node:os";
 import { PrismaClient } from "@prisma/client";
 
 import { setEmailProvider, type EmailProvider, type EmailMessage } from "@/lib/email";
 
+// These integration tests run against a real Postgres database. Set
+// TEST_DATABASE_URL to a disposable Postgres connection string to enable them.
+// They are skipped (not failed) when the variable is absent so that `pnpm test`
+// works in environments without Postgres (e.g. fresh clones, CI on Vercel).
+const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
+const describeIfDb = TEST_DATABASE_URL ? describe : describe.skip;
+
 let prisma: PrismaClient;
-let dbFile: string;
 
 const sentEmails: EmailMessage[] = [];
 const captureProvider: EmailProvider = {
@@ -19,27 +22,28 @@ const captureProvider: EmailProvider = {
 };
 
 beforeAll(() => {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hyrox-test-"));
-  dbFile = path.join(tmpDir, "test.db");
-  process.env.DATABASE_URL = `file:${dbFile}`;
+  if (!TEST_DATABASE_URL) return;
+  process.env.DATABASE_URL = TEST_DATABASE_URL;
   process.env.SESSION_SECRET = "test-secret-key-not-for-production";
 
-  // Push schema (creates DB)
-  execSync("pnpm exec prisma db push --skip-generate", {
+  // Push schema (creates / updates tables in the test database).
+  execSync("pnpm exec prisma db push --skip-generate --accept-data-loss", {
     stdio: "ignore",
-    env: { ...process.env, DATABASE_URL: `file:${dbFile}` },
+    env: { ...process.env, DATABASE_URL: TEST_DATABASE_URL },
   });
 
-  prisma = new PrismaClient({ datasources: { db: { url: `file:${dbFile}` } } });
+  prisma = new PrismaClient({ datasources: { db: { url: TEST_DATABASE_URL } } });
   setEmailProvider(captureProvider);
 });
 
 afterAll(async () => {
+  if (!TEST_DATABASE_URL) return;
   await prisma.$disconnect();
   setEmailProvider(null);
 });
 
 beforeEach(async () => {
+  if (!TEST_DATABASE_URL) return;
   sentEmails.length = 0;
   await prisma.booking.deleteMany();
   await prisma.slot.deleteMany();
@@ -62,7 +66,7 @@ async function makeSlot(capacity = 2) {
   });
 }
 
-describe("createBooking — capacity math", () => {
+describeIfDb("createBooking — capacity math", () => {
   it("first booking is Confirmed at position 1", async () => {
     const slot = await makeSlot(2);
     const { createBooking } = await getBookingLib();
@@ -151,7 +155,7 @@ describe("createBooking — capacity math", () => {
   });
 });
 
-describe("cancelBooking — waitlist promotion", () => {
+describeIfDb("cancelBooking — waitlist promotion", () => {
   it("promotes oldest waitlist and sends email when a Confirmed booking cancels", async () => {
     const slot = await makeSlot(1);
     const { createBooking, cancelBooking } = await getBookingLib();

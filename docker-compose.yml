@@ -8,15 +8,13 @@ services:
     restart: unless-stopped
     environment:
       - NODE_ENV=production
-      - DATABASE_URL=file:/app/data/prod.db
+      - DATABASE_URL=${DATABASE_URL:?DATABASE_URL is required (Postgres connection string)}
       - ADMIN_PASSWORD_INITIAL=${ADMIN_PASSWORD_INITIAL:-change-me-on-first-login}
       - SESSION_SECRET=${SESSION_SECRET:?SESSION_SECRET is required}
       - RESEND_API_KEY=${RESEND_API_KEY:-}
       - EMAIL_FROM=${EMAIL_FROM:-HYROX <bookings@chillwithhans.com>}
       - OWNER_EMAIL=${OWNER_EMAIL:-}
       - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-https://hyrox.chillwithhans.com}
-    volumes:
-      - ./data:/app/data
     ports:
       - "3000:3000"
     healthcheck:
