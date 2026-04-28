@@ -4,6 +4,7 @@ import { getBookingsGateState, getSettings } from "@/lib/settings";
 import { formatMonthDay } from "@/lib/utils";
 import { BookingForm } from "@/components/booking-form";
 import { BookingsCountdown } from "@/components/bookings-countdown";
+import { BookingsClosingCountdown } from "@/components/bookings-closing-countdown";
 import { BookingsClosedNotice } from "@/components/bookings-closed-notice";
 
 export const dynamic = "force-dynamic";
@@ -55,7 +56,12 @@ export default async function HomePage() {
 
       <section>
         {gate === "open" ? (
-          <BookingForm slots={slotData} />
+          <div className="flex flex-col gap-4">
+            <BookingsClosingCountdown
+              closeAtISO={settings.effectiveBookingsCloseAt.toISOString()}
+            />
+            <BookingForm slots={slotData} />
+          </div>
         ) : gate === "pending" && settings.bookingsOpenAt ? (
           <BookingsCountdown openAtISO={settings.bookingsOpenAt.toISOString()} />
         ) : (
