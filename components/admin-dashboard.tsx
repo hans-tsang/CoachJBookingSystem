@@ -255,18 +255,18 @@ function SlotsTab({
       >
         <h3 className="text-base font-semibold">Add slot</h3>
         <input type="hidden" name="trainingDate" value={trainingDate} />
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="time">Time (HH:MM-HH:MM)</Label>
-            <Input id="time" name="time" placeholder="09:30-11:00" required />
+            <Label htmlFor="time">Time</Label>
+            <Select id="time" name="time" defaultValue="09:30-11:00" required>
+              <option value="09:30-11:00">09:30-11:00</option>
+              <option value="11:30-13:00">11:30-13:00</option>
+              <option value="13:30-15:00">13:30-15:00</option>
+            </Select>
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="capacity">Capacity</Label>
-            <Input id="capacity" name="capacity" type="number" min={1} defaultValue={15} required />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="order">Order</Label>
-            <Input id="order" name="order" type="number" min={0} defaultValue={1} required />
+            <Input id="capacity" name="capacity" type="number" min={1} defaultValue={14} required />
           </div>
         </div>
         <FormFeedback state={state} />
