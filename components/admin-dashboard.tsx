@@ -14,7 +14,6 @@ import {
   changePasswordAction,
   upsertSlotAction,
   deleteSlotAction,
-  addWalkinAction,
   resetWeekAction,
   logoutAction,
   type AdminActionResult,
@@ -293,68 +292,6 @@ function SlotsTab({
   );
 }
 
-function WalkinTab({ slots }: { slots: AdminSlot[] }) {
-  const [state, setState] = React.useState<AdminActionResult | null>(null);
-  if (slots.length === 0) {
-    return (
-      <p className="text-sm text-[var(--color-muted-foreground)]">
-        Add a slot first before adding walk-ins.
-      </p>
-    );
-  }
-  return (
-    <form
-      action={async (fd) => setState(await addWalkinAction(state, fd))}
-      className="flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] p-4"
-    >
-      <h3 className="text-base font-semibold">Add walk-in</h3>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="walk-slot">Slot</Label>
-          <Select id="walk-slot" name="slotId" required>
-            {slots.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.time}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="walk-name">Name</Label>
-          <Input id="walk-name" name="name" required />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="walk-wa">WhatsApp</Label>
-          <Input id="walk-wa" name="whatsapp" required />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="walk-payment">Payment</Label>
-          <Select id="walk-payment" name="payment" defaultValue="Cash">
-            <option value="PayMe">PayMe</option>
-            <option value="FPS">FPS</option>
-            <option value="Cash">Cash</option>
-            <option value="Other">Other</option>
-          </Select>
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="walk-amount">Amount ($)</Label>
-          <Input id="walk-amount" name="amount" type="number" min={0} />
-        </div>
-        <div className="flex items-end gap-3">
-          <label className="inline-flex items-center gap-2 text-sm">
-            <input type="checkbox" name="paid" /> Paid
-          </label>
-          <label className="inline-flex items-center gap-2 text-sm">
-            <input type="checkbox" name="uber" /> Uber
-          </label>
-        </div>
-      </div>
-      <FormFeedback state={state} />
-      <PendingButton>Add walk-in</PendingButton>
-    </form>
-  );
-}
-
 export function AdminDashboard(props: AdminDashboardProps) {
   const { toast } = useToast();
   const onResetWeek = async () => {
@@ -399,7 +336,6 @@ export function AdminDashboard(props: AdminDashboardProps) {
         tabs={[
           { id: "roster", label: "Roster" },
           { id: "bookings", label: "Bookings" },
-          { id: "walkin", label: "Walk-in" },
           { id: "slots", label: "Slots" },
           { id: "settings", label: "Settings" },
         ]}
@@ -407,7 +343,6 @@ export function AdminDashboard(props: AdminDashboardProps) {
         {(active) => {
           if (active === "roster") return <RosterView rosterText={props.rosterText} />;
           if (active === "bookings") return <BookingsTable rows={props.bookings} />;
-          if (active === "walkin") return <WalkinTab slots={props.slots} />;
           if (active === "slots")
             return <SlotsTab slots={props.slots} trainingDate={props.settings.trainingDate} />;
           if (active === "settings") return <SettingsTab settings={props.settings} />;
