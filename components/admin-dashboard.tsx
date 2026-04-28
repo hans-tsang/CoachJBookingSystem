@@ -217,6 +217,8 @@ function SlotsTab({
   trainingDate: string;
 }) {
   const [state, setState] = React.useState<AdminActionResult | null>(null);
+  const [startTime, setStartTime] = React.useState("09:30");
+  const [endTime, setEndTime] = React.useState("11:00");
 
   return (
     <div className="flex flex-col gap-6">
@@ -250,19 +252,34 @@ function SlotsTab({
       </div>
 
       <form
-        action={async (fd) => setState(await upsertSlotAction(state, fd))}
+        action={async (fd) => {
+          fd.set("time", `${startTime}-${endTime}`);
+          setState(await upsertSlotAction(state, fd));
+        }}
         className="flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] p-4"
       >
         <h3 className="text-base font-semibold">Add slot</h3>
         <input type="hidden" name="trainingDate" value={trainingDate} />
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="time">Time</Label>
-            <Select id="time" name="time" defaultValue="09:30-11:00" required>
-              <option value="09:30-11:00">09:30-11:00</option>
-              <option value="11:30-13:00">11:30-13:00</option>
-              <option value="13:30-15:00">13:30-15:00</option>
-            </Select>
+            <Label htmlFor="startTime">Start time</Label>
+            <Input
+              id="startTime"
+              type="time"
+              value={startTime}
+              onChange={(e) => setStartTime(e.target.value)}
+              required
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="endTime">End time</Label>
+            <Input
+              id="endTime"
+              type="time"
+              value={endTime}
+              onChange={(e) => setEndTime(e.target.value)}
+              required
+            />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="capacity">Capacity</Label>
