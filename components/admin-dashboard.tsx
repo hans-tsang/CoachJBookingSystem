@@ -36,6 +36,8 @@ export type AdminDashboardProps = {
     trainingDate: string;
     coachFee: number;
     gymFee: number;
+    /** ISO datetime string in UTC, or empty string if not gated. */
+    bookingsOpenAt: string;
   };
 };
 
@@ -52,6 +54,74 @@ function FormFeedback({ state }: { state: AdminActionResult | null }) {
     >
       {state.ok ? state.message : state.error}
     </p>
+  );
+}
+
+/** Convert an ISO UTC string to the value format expected by `<input type="datetime-local">` (in the user's local timezone). */
+function isoToLocalInput(iso: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  const mm = pad(d.getMonth() + 1);
+  const dd = pad(d.getDate());
+  const hh = pad(d.getHours());
+  const mi = pad(d.getMinutes());
+  return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
+}
+
+function getLocalTimezone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone;
+  } catch {
+    return "";
+  }
+}
+
+function BookingsOpenAtField({ defaultValue }: { defaultValue: string }) {
+  const [local, setLocal] = React.useState(() => isoToLocalInput(defaultValue));
+  // Server and client may resolve different timezones; render label client-only
+  // by reading inside a span with suppressed hydration warning.
+  const tz = getLocalTimezone();
+  // Browsers interpret `datetime-local` values in the local timezone, so
+  // `new Date(local)` produces the correct UTC instant for submission.
+  const isoUtc = local ? new Date(local).toISOString() : "";
+  return (
+    <div className="flex flex-col gap-1.5 sm:col-span-2">
+      <Label htmlFor="bookingsOpenAt-input">
+        Bookings open at{" "}
+        <span
+          className="font-normal text-[var(--color-muted-foreground)]"
+          suppressHydrationWarning
+        >
+          {tz ? `(${tz})` : ""}
+        </span>
+      </Label>
+      <input type="hidden" name="bookingsOpenAt" value={isoUtc} />
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          id="bookingsOpenAt-input"
+          type="datetime-local"
+          value={local}
+          onChange={(e) => setLocal(e.target.value)}
+          className="sm:max-w-xs"
+        />
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => setLocal("")}
+          disabled={!local}
+        >
+          Clear
+        </Button>
+      </div>
+      <p className="text-xs text-[var(--color-muted-foreground)]">
+        Leave blank to open bookings immediately. While set in the future, the
+        public page shows a countdown and submissions are blocked.
+      </p>
+    </div>
   );
 }
 
@@ -113,6 +183,7 @@ function SettingsTab({
               defaultValue={settings.gymFee}
             />
           </div>
+          <BookingsOpenAtField defaultValue={settings.bookingsOpenAt} />
         </div>
         <FormFeedback state={s} />
         <PendingButton>Save settings</PendingButton>

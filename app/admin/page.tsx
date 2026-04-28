@@ -71,6 +71,9 @@ export default async function AdminPage() {
         trainingDate: toISODate(settings.trainingDate),
         coachFee: settings.coachFee,
         gymFee: settings.gymFee,
+        bookingsOpenAt: settings.bookingsOpenAt
+          ? settings.bookingsOpenAt.toISOString()
+          : "",
       }}
     />
   );
