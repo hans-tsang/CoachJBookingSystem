@@ -74,6 +74,9 @@ export default async function AdminPage() {
         bookingsOpenAt: settings.bookingsOpenAt
           ? settings.bookingsOpenAt.toISOString()
           : "",
+        bookingsCloseAt: settings.bookingsCloseAt
+          ? settings.bookingsCloseAt.toISOString()
+          : "",
       }}
     />
   );

@@ -46,26 +46,48 @@ export const adminLoginSchema = z.object({
   password: z.string().min(1, "Password is required").max(200),
 });
 
-export const settingsUpdateSchema = z.object({
-  gymLocation: trimmedString(200),
-  trainingDate: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD"),
-  coachFee: z.coerce.number().int().min(0).max(100000),
-  gymFee: z.coerce.number().int().min(0).max(100000),
-  // ISO 8601 datetime string in UTC (e.g., "2026-05-02T10:00:00.000Z").
-  // Empty string is treated as "no gate" (bookings open immediately).
-  bookingsOpenAt: z
-    .string()
-    .trim()
-    .max(64)
-    .optional()
-    .transform((v) => (v && v.length > 0 ? v : ""))
-    .refine(
-      (v) => v === "" || !Number.isNaN(new Date(v).getTime()),
-      { message: "Enter a valid date/time" },
-    ),
-});
+export const settingsUpdateSchema = z
+  .object({
+    gymLocation: trimmedString(200),
+    trainingDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD"),
+    coachFee: z.coerce.number().int().min(0).max(100000),
+    gymFee: z.coerce.number().int().min(0).max(100000),
+    // ISO 8601 datetime string in UTC (e.g., "2026-05-02T10:00:00.000Z").
+    // Empty string is treated as "no gate" (bookings open immediately).
+    bookingsOpenAt: z
+      .string()
+      .trim()
+      .max(64)
+      .optional()
+      .transform((v) => (v && v.length > 0 ? v : ""))
+      .refine(
+        (v) => v === "" || !Number.isNaN(new Date(v).getTime()),
+        { message: "Enter a valid date/time" },
+      ),
+    // ISO 8601 datetime string in UTC. Empty string means "never closes
+    // automatically".
+    bookingsCloseAt: z
+      .string()
+      .trim()
+      .max(64)
+      .optional()
+      .transform((v) => (v && v.length > 0 ? v : ""))
+      .refine(
+        (v) => v === "" || !Number.isNaN(new Date(v).getTime()),
+        { message: "Enter a valid date/time" },
+      ),
+  })
+  .refine(
+    (data) => {
+      if (!data.bookingsOpenAt || !data.bookingsCloseAt) return true;
+      const open = new Date(data.bookingsOpenAt).getTime();
+      const close = new Date(data.bookingsCloseAt).getTime();
+      return close > open;
+    },
+    { message: "Closing time must be after opening time", path: ["bookingsCloseAt"] },
+  );
 
 export const changePasswordSchema = z
   .object({

@@ -8,6 +8,8 @@ export type AppSettings = {
   gymFee: number;
   /** Bookings are gated until this instant. Null = open immediately. */
   bookingsOpenAt: Date | null;
+  /** Bookings are blocked once this instant passes. Null = never closes automatically. */
+  bookingsCloseAt: Date | null;
 };
 
 const DEFAULTS = {
@@ -32,12 +34,20 @@ export async function getSettings(): Promise<AppSettings> {
     if (!Number.isNaN(parsed.getTime())) bookingsOpenAt = parsed;
   }
 
+  const bookingsCloseAtStr = map.get("bookingsCloseAt");
+  let bookingsCloseAt: Date | null = null;
+  if (bookingsCloseAtStr) {
+    const parsed = new Date(bookingsCloseAtStr);
+    if (!Number.isNaN(parsed.getTime())) bookingsCloseAt = parsed;
+  }
+
   return {
     gymLocation: map.get("gymLocation") ?? DEFAULTS.gymLocation,
     trainingDate,
     coachFee: parseInt(map.get("coachFee") ?? DEFAULTS.coachFee, 10),
     gymFee: parseInt(map.get("gymFee") ?? DEFAULTS.gymFee, 10),
     bookingsOpenAt,
+    bookingsCloseAt,
   };
 }
 
@@ -61,9 +71,13 @@ export async function updateSettings(input: {
   gymFee: number;
   /** ISO datetime string in UTC, or empty/null to clear (open immediately). */
   bookingsOpenAt?: string | null;
+  /** ISO datetime string in UTC, or empty/null to clear (never auto-closes). */
+  bookingsCloseAt?: string | null;
 }): Promise<void> {
   const bookingsOpenAtValue =
     input.bookingsOpenAt && input.bookingsOpenAt.length > 0 ? input.bookingsOpenAt : "";
+  const bookingsCloseAtValue =
+    input.bookingsCloseAt && input.bookingsCloseAt.length > 0 ? input.bookingsCloseAt : "";
   await prisma.$transaction([
     prisma.setting.upsert({
       where: { key: "gymLocation" },
@@ -90,6 +104,11 @@ export async function updateSettings(input: {
       create: { key: "bookingsOpenAt", value: bookingsOpenAtValue },
       update: { value: bookingsOpenAtValue },
     }),
+    prisma.setting.upsert({
+      where: { key: "bookingsCloseAt" },
+      create: { key: "bookingsCloseAt", value: bookingsCloseAtValue },
+      update: { value: bookingsCloseAtValue },
+    }),
   ]);
 }
 
@@ -102,4 +121,31 @@ export { toISODate };
 export function areBookingsOpen(openAt: Date | null, now: Date = new Date()): boolean {
   if (!openAt) return true;
   return now.getTime() >= openAt.getTime();
+}
+
+/**
+ * Returns true if bookings have closed. When `closeAt` is null, bookings never
+ * automatically close. Otherwise they're closed once `now >= closeAt`.
+ */
+export function areBookingsClosed(closeAt: Date | null, now: Date = new Date()): boolean {
+  if (!closeAt) return false;
+  return now.getTime() >= closeAt.getTime();
+}
+
+export type BookingsGateState = "pending" | "open" | "closed";
+
+/**
+ * Resolves the current booking gate state based on optional open/close instants.
+ *  - "pending": bookings haven't opened yet (now < openAt)
+ *  - "closed":  bookings have closed (now >= closeAt)
+ *  - "open":    accepting bookings
+ */
+export function getBookingsGateState(
+  openAt: Date | null,
+  closeAt: Date | null,
+  now: Date = new Date(),
+): BookingsGateState {
+  if (!areBookingsOpen(openAt, now)) return "pending";
+  if (areBookingsClosed(closeAt, now)) return "closed";
+  return "open";
 }
