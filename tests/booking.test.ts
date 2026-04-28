@@ -358,6 +358,7 @@ describeIfDb("settings — bookingsOpenAt round-trip", () => {
     });
     let s = await getSettings();
     expect(s.bookingsCloseAt?.toISOString()).toBe(closeIso);
+    expect(s.effectiveBookingsCloseAt.toISOString()).toBe(closeIso);
 
     await updateSettings({
       gymLocation: "Test Gym",
@@ -369,6 +370,10 @@ describeIfDb("settings — bookingsOpenAt round-trip", () => {
     });
     s = await getSettings();
     expect(s.bookingsCloseAt).toBeNull();
+    // Falls back to midnight at the start of the training date.
+    expect(s.effectiveBookingsCloseAt.toISOString()).toBe(
+      "2026-05-02T00:00:00.000Z",
+    );
   });
 });
 
@@ -527,5 +532,22 @@ describe("getBookingsGateState", () => {
     expect(
       getBookingsGateState(null, closeAt, new Date("2026-05-02T13:00:00.000Z")),
     ).toBe("closed");
+  });
+});
+
+describe("defaultBookingsCloseAt", () => {
+  it("returns midnight UTC at the start of the training day", async () => {
+    const { defaultBookingsCloseAt } = await import("@/lib/settings");
+    const trainingDate = new Date("2026-05-02T00:00:00.000Z");
+    expect(defaultBookingsCloseAt(trainingDate).toISOString()).toBe(
+      "2026-05-02T00:00:00.000Z",
+    );
+  });
+  it("strips any time component from the training date", async () => {
+    const { defaultBookingsCloseAt } = await import("@/lib/settings");
+    const trainingDate = new Date("2026-05-02T15:30:45.000Z");
+    expect(defaultBookingsCloseAt(trainingDate).toISOString()).toBe(
+      "2026-05-02T00:00:00.000Z",
+    );
   });
 });

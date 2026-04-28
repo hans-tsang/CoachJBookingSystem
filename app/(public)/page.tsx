@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
   const settings = await getSettings();
-  const gate = getBookingsGateState(settings.bookingsOpenAt, settings.bookingsCloseAt);
+  const gate = getBookingsGateState(settings.bookingsOpenAt, settings.effectiveBookingsCloseAt);
 
   const slots =
     gate === "open"
@@ -60,7 +60,7 @@ export default async function HomePage() {
           <BookingsCountdown openAtISO={settings.bookingsOpenAt.toISOString()} />
         ) : (
           <BookingsClosedNotice
-            closeAtISO={settings.bookingsCloseAt?.toISOString() ?? null}
+            closeAtISO={settings.effectiveBookingsCloseAt.toISOString()}
           />
         )}
       </section>

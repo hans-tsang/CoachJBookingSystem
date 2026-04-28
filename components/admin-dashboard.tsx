@@ -201,7 +201,7 @@ function SettingsTab({
           <BookingsDateTimeField
             name="bookingsCloseAt"
             label="Bookings close at"
-            helpText="Leave blank to keep bookings open indefinitely. Once this time passes, the public page shows a closed notice and submissions are blocked. Must be after the opening time."
+            helpText="Leave blank to default to midnight at the start of the training date (the night before training). Once this time passes, the public page shows a closed notice and submissions are blocked. Must be after the opening time."
             defaultValue={settings.bookingsCloseAt}
           />
         </div>

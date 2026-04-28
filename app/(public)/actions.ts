@@ -31,7 +31,7 @@ export async function createBookingAction(
   }
 
   const settings = await getSettings();
-  const gate = getBookingsGateState(settings.bookingsOpenAt, settings.bookingsCloseAt);
+  const gate = getBookingsGateState(settings.bookingsOpenAt, settings.effectiveBookingsCloseAt);
   if (gate === "pending") {
     return {
       ok: false,

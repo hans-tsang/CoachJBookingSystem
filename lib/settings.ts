@@ -8,9 +8,33 @@ export type AppSettings = {
   gymFee: number;
   /** Bookings are gated until this instant. Null = open immediately. */
   bookingsOpenAt: Date | null;
-  /** Bookings are blocked once this instant passes. Null = never closes automatically. */
+  /**
+   * Admin-configured close instant. Null when no override is stored, in which
+   * case `effectiveBookingsCloseAt` falls back to the start of `trainingDate`.
+   */
   bookingsCloseAt: Date | null;
+  /**
+   * Resolved close instant used to gate bookings. Equals `bookingsCloseAt`
+   * when set, otherwise defaults to midnight at the start of `trainingDate`
+   * (i.e., the night before the training day's midnight).
+   */
+  effectiveBookingsCloseAt: Date;
 };
+
+/**
+ * Default close instant when no override is configured: midnight at the start
+ * of the training day in UTC. Equivalent to "the night before training date's
+ * midnight".
+ */
+export function defaultBookingsCloseAt(trainingDate: Date): Date {
+  return new Date(
+    Date.UTC(
+      trainingDate.getUTCFullYear(),
+      trainingDate.getUTCMonth(),
+      trainingDate.getUTCDate(),
+    ),
+  );
+}
 
 const DEFAULTS = {
   gymLocation: "TBD",
@@ -48,6 +72,7 @@ export async function getSettings(): Promise<AppSettings> {
     gymFee: parseInt(map.get("gymFee") ?? DEFAULTS.gymFee, 10),
     bookingsOpenAt,
     bookingsCloseAt,
+    effectiveBookingsCloseAt: bookingsCloseAt ?? defaultBookingsCloseAt(trainingDate),
   };
 }
 
