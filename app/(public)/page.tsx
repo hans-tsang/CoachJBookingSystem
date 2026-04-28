@@ -52,10 +52,10 @@ export default async function HomePage() {
       </header>
 
       <section>
-        {bookingsOpen ? (
+        {bookingsOpen || !settings.bookingsOpenAt ? (
           <BookingForm slots={slotData} />
         ) : (
-          <BookingsCountdown openAtISO={settings.bookingsOpenAt!.toISOString()} />
+          <BookingsCountdown openAtISO={settings.bookingsOpenAt.toISOString()} />
         )}
       </section>
 

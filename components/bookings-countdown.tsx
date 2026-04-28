@@ -35,12 +35,16 @@ function formatLocal(date: Date): string {
  * so the server can render the actual booking form.
  */
 export function BookingsCountdown({ openAtISO }: { openAtISO: string }) {
-  const target = React.useMemo(() => new Date(openAtISO).getTime(), [openAtISO]);
+  const target = React.useMemo(() => {
+    const t = new Date(openAtISO).getTime();
+    return Number.isFinite(t) ? t : null;
+  }, [openAtISO]);
   // Tick-driven render. We compute "remaining" from `target - Date.now()` only
   // inside the interval callback, so render itself stays pure.
   const [remaining, setRemaining] = React.useState<number | null>(null);
 
   React.useEffect(() => {
+    if (target === null) return;
     const tick = () => setRemaining(target - Date.now());
     tick();
     const id = setInterval(tick, 1000);
@@ -53,6 +57,14 @@ export function BookingsCountdown({ openAtISO }: { openAtISO: string }) {
       window.location.reload();
     }
   }, [remaining]);
+
+  if (target === null) {
+    return (
+      <div className="rounded-md border border-[var(--color-border)] bg-[var(--color-muted)] p-6 text-center text-sm text-[var(--color-muted-foreground)]">
+        Bookings are not open yet.
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col items-center gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] p-8 text-center">
