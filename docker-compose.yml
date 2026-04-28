@@ -1,0 +1,27 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: hyrox-bookings:latest
+    container_name: hyrox-bookings
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=file:/app/data/prod.db
+      - ADMIN_PASSWORD_INITIAL=${ADMIN_PASSWORD_INITIAL:-change-me-on-first-login}
+      - SESSION_SECRET=${SESSION_SECRET:?SESSION_SECRET is required}
+      - RESEND_API_KEY=${RESEND_API_KEY:-}
+      - EMAIL_FROM=${EMAIL_FROM:-HYROX <bookings@chillwithhans.com>}
+      - OWNER_EMAIL=${OWNER_EMAIL:-}
+      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-https://hyrox.chillwithhans.com}
+    volumes:
+      - ./data:/app/data
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
