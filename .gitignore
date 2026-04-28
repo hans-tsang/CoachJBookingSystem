@@ -13,4 +13,5 @@ prisma/dev.db-journal
 data/
 coverage/
 .vitest-cache/
+package-lock.json
 *.tsbuildinfo

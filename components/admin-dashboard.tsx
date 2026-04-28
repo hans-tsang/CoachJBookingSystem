@@ -237,6 +237,8 @@ function SlotsTab({
   trainingDate: string;
 }) {
   const [state, setState] = React.useState<AdminActionResult | null>(null);
+  const [startTime, setStartTime] = React.useState("09:30");
+  const [endTime, setEndTime] = React.useState("11:00");
 
   return (
     <div className="flex flex-col gap-6">
@@ -270,23 +272,38 @@ function SlotsTab({
       </div>
 
       <form
-        action={async (fd) => setState(await upsertSlotAction(state, fd))}
+        action={async (fd) => {
+          fd.set("time", `${startTime}-${endTime}`);
+          setState(await upsertSlotAction(state, fd));
+        }}
         className="flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] p-4"
       >
         <h3 className="text-base font-semibold">Add slot</h3>
         <input type="hidden" name="trainingDate" value={trainingDate} />
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="time">Time (HH:MM-HH:MM)</Label>
-            <Input id="time" name="time" placeholder="09:30-11:00" required />
+            <Label htmlFor="startTime">Start time</Label>
+            <Input
+              id="startTime"
+              type="time"
+              value={startTime}
+              onChange={(e) => setStartTime(e.target.value)}
+              required
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="endTime">End time</Label>
+            <Input
+              id="endTime"
+              type="time"
+              value={endTime}
+              onChange={(e) => setEndTime(e.target.value)}
+              required
+            />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="capacity">Capacity</Label>
-            <Input id="capacity" name="capacity" type="number" min={1} defaultValue={15} required />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="order">Order</Label>
-            <Input id="order" name="order" type="number" min={0} defaultValue={1} required />
+            <Input id="capacity" name="capacity" type="number" min={1} defaultValue={14} required />
           </div>
         </div>
         <FormFeedback state={state} />

@@ -84,20 +84,23 @@ export async function changePasswordAction(
   return { ok: true, message: "Password updated." };
 }
 
-const slotCrudSchema = slotInputSchema.extend({
-  trainingDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-});
+const slotCrudSchema = slotInputSchema
+  .extend({
+    trainingDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  })
+  .partial({ order: true });
 
 export async function upsertSlotAction(
   _prev: AdminActionResult | null,
   formData: FormData,
 ): Promise<AdminActionResult> {
   await requireAdmin();
+  const orderRaw = formData.get("order");
   const parsed = slotCrudSchema.safeParse({
     id: formData.get("id") || undefined,
     time: formData.get("time"),
     capacity: formData.get("capacity"),
-    order: formData.get("order"),
+    order: orderRaw === null || orderRaw === "" ? undefined : orderRaw,
     trainingDate: formData.get("trainingDate"),
   });
   if (!parsed.success) {
@@ -111,16 +114,25 @@ export async function upsertSlotAction(
         data: {
           time: parsed.data.time,
           capacity: parsed.data.capacity,
-          order: parsed.data.order,
+          ...(parsed.data.order !== undefined ? { order: parsed.data.order } : {}),
           date,
         },
       });
     } else {
+      let order = parsed.data.order;
+      if (order === undefined) {
+        const last = await prisma.slot.findFirst({
+          where: { date },
+          orderBy: { order: "desc" },
+          select: { order: true },
+        });
+        order = (last?.order ?? 0) + 1;
+      }
       await prisma.slot.create({
         data: {
           time: parsed.data.time,
           capacity: parsed.data.capacity,
-          order: parsed.data.order,
+          order,
           date,
         },
       });
