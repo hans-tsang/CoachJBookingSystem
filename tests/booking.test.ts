@@ -344,6 +344,37 @@ describeIfDb("settings — bookingsOpenAt round-trip", () => {
     s = await getSettings();
     expect(s.bookingsOpenAt).toBeNull();
   });
+
+  it("stores and reads back bookingsCloseAt; empty string clears the gate", async () => {
+    const { getSettings, updateSettings } = await import("@/lib/settings");
+    const closeIso = "2026-05-02T12:00:00.000Z";
+    await updateSettings({
+      gymLocation: "Test Gym",
+      trainingDate: "2026-05-02",
+      coachFee: 150,
+      gymFee: 100,
+      bookingsOpenAt: "",
+      bookingsCloseAt: closeIso,
+    });
+    let s = await getSettings();
+    expect(s.bookingsCloseAt?.toISOString()).toBe(closeIso);
+    expect(s.effectiveBookingsCloseAt.toISOString()).toBe(closeIso);
+
+    await updateSettings({
+      gymLocation: "Test Gym",
+      trainingDate: "2026-05-02",
+      coachFee: 150,
+      gymFee: 100,
+      bookingsOpenAt: "",
+      bookingsCloseAt: "",
+    });
+    s = await getSettings();
+    expect(s.bookingsCloseAt).toBeNull();
+    // Falls back to midnight at the start of the training date.
+    expect(s.effectiveBookingsCloseAt.toISOString()).toBe(
+      "2026-05-02T00:00:00.000Z",
+    );
+  });
 });
 
 describeIfDb("createBookingAction — bookings-open gate", () => {
@@ -402,6 +433,44 @@ describeIfDb("createBookingAction — bookings-open gate", () => {
     const row = await prisma.booking.findFirst({ where: { name: "Open User" } });
     expect(row).not.toBeNull();
   });
+
+  it("rejects bookings after closeAt", async () => {
+    const slot = await makeSlot(2);
+    const { updateSettings } = await import("@/lib/settings");
+    const { createBookingAction } = await import("@/app/(public)/actions");
+
+    // Close gate already passed.
+    const past = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    await updateSettings({
+      gymLocation: "Test Gym",
+      trainingDate: "2026-05-02",
+      coachFee: 150,
+      gymFee: 100,
+      bookingsOpenAt: "",
+      bookingsCloseAt: past,
+    });
+
+    const fd = new FormData();
+    fd.set("slotId", slot.id);
+    fd.set("name", "Late User");
+    fd.set("whatsapp", "85291110002");
+    fd.set("payment", "PayMe");
+    const blocked = await createBookingAction(null, fd);
+    expect(blocked.ok).toBe(false);
+    if (!blocked.ok) {
+      expect(blocked.error.toLowerCase()).toContain("closed");
+    }
+
+    // Reset gate so other tests aren't affected.
+    await updateSettings({
+      gymLocation: "Test Gym",
+      trainingDate: "2026-05-02",
+      coachFee: 150,
+      gymFee: 100,
+      bookingsOpenAt: "",
+      bookingsCloseAt: "",
+    });
+  });
 });
 
 describe("areBookingsOpen", () => {
@@ -415,5 +484,70 @@ describe("areBookingsOpen", () => {
     expect(areBookingsOpen(openAt, new Date("2026-05-02T09:59:59.999Z"))).toBe(false);
     expect(areBookingsOpen(openAt, new Date("2026-05-02T10:00:00.000Z"))).toBe(true);
     expect(areBookingsOpen(openAt, new Date("2026-05-02T10:00:00.001Z"))).toBe(true);
+  });
+});
+
+describe("areBookingsClosed", () => {
+  it("returns false when closeAt is null", async () => {
+    const { areBookingsClosed } = await import("@/lib/settings");
+    expect(areBookingsClosed(null)).toBe(false);
+  });
+  it("returns false strictly before closeAt and true at/after", async () => {
+    const { areBookingsClosed } = await import("@/lib/settings");
+    const closeAt = new Date("2026-05-02T12:00:00.000Z");
+    expect(areBookingsClosed(closeAt, new Date("2026-05-02T11:59:59.999Z"))).toBe(false);
+    expect(areBookingsClosed(closeAt, new Date("2026-05-02T12:00:00.000Z"))).toBe(true);
+    expect(areBookingsClosed(closeAt, new Date("2026-05-02T12:00:00.001Z"))).toBe(true);
+  });
+});
+
+describe("getBookingsGateState", () => {
+  it("returns 'open' when no gates are set", async () => {
+    const { getBookingsGateState } = await import("@/lib/settings");
+    expect(getBookingsGateState(null, null)).toBe("open");
+  });
+  it("returns 'pending' before openAt", async () => {
+    const { getBookingsGateState } = await import("@/lib/settings");
+    const openAt = new Date("2026-05-02T10:00:00.000Z");
+    const closeAt = new Date("2026-05-02T12:00:00.000Z");
+    expect(
+      getBookingsGateState(openAt, closeAt, new Date("2026-05-02T09:00:00.000Z")),
+    ).toBe("pending");
+  });
+  it("returns 'open' between openAt and closeAt", async () => {
+    const { getBookingsGateState } = await import("@/lib/settings");
+    const openAt = new Date("2026-05-02T10:00:00.000Z");
+    const closeAt = new Date("2026-05-02T12:00:00.000Z");
+    expect(
+      getBookingsGateState(openAt, closeAt, new Date("2026-05-02T11:00:00.000Z")),
+    ).toBe("open");
+  });
+  it("returns 'closed' at/after closeAt", async () => {
+    const { getBookingsGateState } = await import("@/lib/settings");
+    const openAt = new Date("2026-05-02T10:00:00.000Z");
+    const closeAt = new Date("2026-05-02T12:00:00.000Z");
+    expect(
+      getBookingsGateState(openAt, closeAt, new Date("2026-05-02T12:00:00.000Z")),
+    ).toBe("closed");
+    expect(
+      getBookingsGateState(null, closeAt, new Date("2026-05-02T13:00:00.000Z")),
+    ).toBe("closed");
+  });
+});
+
+describe("defaultBookingsCloseAt", () => {
+  it("returns midnight UTC at the start of the training day", async () => {
+    const { defaultBookingsCloseAt } = await import("@/lib/settings");
+    const trainingDate = new Date("2026-05-02T00:00:00.000Z");
+    expect(defaultBookingsCloseAt(trainingDate).toISOString()).toBe(
+      "2026-05-02T00:00:00.000Z",
+    );
+  });
+  it("strips any time component from the training date", async () => {
+    const { defaultBookingsCloseAt } = await import("@/lib/settings");
+    const trainingDate = new Date("2026-05-02T15:30:45.000Z");
+    expect(defaultBookingsCloseAt(trainingDate).toISOString()).toBe(
+      "2026-05-02T00:00:00.000Z",
+    );
   });
 });

@@ -1,28 +1,30 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { areBookingsOpen, getSettings } from "@/lib/settings";
+import { getBookingsGateState, getSettings } from "@/lib/settings";
 import { formatMonthDay } from "@/lib/utils";
 import { BookingForm } from "@/components/booking-form";
 import { BookingsCountdown } from "@/components/bookings-countdown";
+import { BookingsClosedNotice } from "@/components/bookings-closed-notice";
 
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
   const settings = await getSettings();
-  const bookingsOpen = areBookingsOpen(settings.bookingsOpenAt);
+  const gate = getBookingsGateState(settings.bookingsOpenAt, settings.effectiveBookingsCloseAt);
 
-  const slots = bookingsOpen
-    ? await prisma.slot.findMany({
-        where: { date: settings.trainingDate },
-        orderBy: { order: "asc" },
-        include: {
-          bookings: {
-            where: { status: { not: "Cancelled" } },
-            select: { status: true },
+  const slots =
+    gate === "open"
+      ? await prisma.slot.findMany({
+          where: { date: settings.trainingDate },
+          orderBy: { order: "asc" },
+          include: {
+            bookings: {
+              where: { status: { not: "Cancelled" } },
+              select: { status: true },
+            },
           },
-        },
-      })
-    : [];
+        })
+      : [];
 
   const slotData = slots.map((slot) => ({
     id: slot.id,
@@ -52,10 +54,14 @@ export default async function HomePage() {
       </header>
 
       <section>
-        {bookingsOpen || !settings.bookingsOpenAt ? (
+        {gate === "open" ? (
           <BookingForm slots={slotData} />
-        ) : (
+        ) : gate === "pending" && settings.bookingsOpenAt ? (
           <BookingsCountdown openAtISO={settings.bookingsOpenAt.toISOString()} />
+        ) : (
+          <BookingsClosedNotice
+            closeAtISO={settings.effectiveBookingsCloseAt.toISOString()}
+          />
         )}
       </section>
 

@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useFormStatus } from "react-dom";
 import { Button } from "@/components/ui/button";
-import { Input, Select } from "@/components/ui/input";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/toast";
@@ -37,6 +37,8 @@ export type AdminDashboardProps = {
     gymFee: number;
     /** ISO datetime string in UTC, or empty string if not gated. */
     bookingsOpenAt: string;
+    /** ISO datetime string in UTC, or empty string if no auto-close. */
+    bookingsCloseAt: string;
   };
 };
 
@@ -78,7 +80,17 @@ function getLocalTimezone(): string {
   }
 }
 
-function BookingsOpenAtField({ defaultValue }: { defaultValue: string }) {
+function BookingsDateTimeField({
+  name,
+  label,
+  helpText,
+  defaultValue,
+}: {
+  name: string;
+  label: string;
+  helpText: string;
+  defaultValue: string;
+}) {
   const [local, setLocal] = React.useState(() => isoToLocalInput(defaultValue));
   // Server and client may resolve different timezones; render label client-only
   // by reading inside a span with suppressed hydration warning.
@@ -86,10 +98,11 @@ function BookingsOpenAtField({ defaultValue }: { defaultValue: string }) {
   // Browsers interpret `datetime-local` values in the local timezone, so
   // `new Date(local)` produces the correct UTC instant for submission.
   const isoUtc = local ? new Date(local).toISOString() : "";
+  const inputId = `${name}-input`;
   return (
     <div className="flex flex-col gap-1.5 sm:col-span-2">
-      <Label htmlFor="bookingsOpenAt-input">
-        Bookings open at{" "}
+      <Label htmlFor={inputId}>
+        {label}{" "}
         <span
           className="font-normal text-[var(--color-muted-foreground)]"
           suppressHydrationWarning
@@ -97,10 +110,10 @@ function BookingsOpenAtField({ defaultValue }: { defaultValue: string }) {
           {tz ? `(${tz})` : ""}
         </span>
       </Label>
-      <input type="hidden" name="bookingsOpenAt" value={isoUtc} />
+      <input type="hidden" name={name} value={isoUtc} />
       <div className="flex flex-wrap items-center gap-2">
         <Input
-          id="bookingsOpenAt-input"
+          id={inputId}
           type="datetime-local"
           value={local}
           onChange={(e) => setLocal(e.target.value)}
@@ -116,10 +129,7 @@ function BookingsOpenAtField({ defaultValue }: { defaultValue: string }) {
           Clear
         </Button>
       </div>
-      <p className="text-xs text-[var(--color-muted-foreground)]">
-        Leave blank to open bookings immediately. While set in the future, the
-        public page shows a countdown and submissions are blocked.
-      </p>
+      <p className="text-xs text-[var(--color-muted-foreground)]">{helpText}</p>
     </div>
   );
 }
@@ -182,7 +192,18 @@ function SettingsTab({
               defaultValue={settings.gymFee}
             />
           </div>
-          <BookingsOpenAtField defaultValue={settings.bookingsOpenAt} />
+          <BookingsDateTimeField
+            name="bookingsOpenAt"
+            label="Bookings open at"
+            helpText="Leave blank to open bookings immediately. While set in the future, the public page shows a countdown and submissions are blocked."
+            defaultValue={settings.bookingsOpenAt}
+          />
+          <BookingsDateTimeField
+            name="bookingsCloseAt"
+            label="Bookings close at"
+            helpText="Leave blank to default to midnight at the start of the training date (the night before training). Once this time passes, the public page shows a closed notice and submissions are blocked. Must be after the opening time."
+            defaultValue={settings.bookingsCloseAt}
+          />
         </div>
         <FormFeedback state={s} />
         <PendingButton>Save settings</PendingButton>
