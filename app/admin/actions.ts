@@ -53,9 +53,10 @@ export async function updateSettingsAction(
     coachFee: formData.get("coachFee"),
     gymFee: formData.get("gymFee"),
     bookingsOpenAt: formData.get("bookingsOpenAt") ?? "",
+    bookingsCloseAt: formData.get("bookingsCloseAt") ?? "",
   });
   if (!parsed.success) {
-    return { ok: false, error: "Please check the values and try again." };
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Please check the values and try again." };
   }
   await updateSettings(parsed.data);
   revalidatePath("/admin");
