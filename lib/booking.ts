@@ -193,7 +193,7 @@ export async function cancelBooking(args: CancelBookingArgs): Promise<CancelBook
       const dateLabel = slot ? formatMonthDay(slot.date) : "";
       await sendPromotionEmail(result.promoted.email, result.promoted.slotTime, dateLabel);
     } catch (err) {
-      // eslint-disable-next-line no-console
+       
       console.error("Failed to send promotion email", err);
     }
   }

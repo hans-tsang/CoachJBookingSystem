@@ -41,14 +41,14 @@ async function main() {
     });
   }
 
-  // eslint-disable-next-line no-console
+   
   console.log(`Seeded settings + 3 slots for ${trainingDateISO}`);
 }
 
 main()
   .then(() => prisma.$disconnect())
   .catch(async (err) => {
-    // eslint-disable-next-line no-console
+     
     console.error(err);
     await prisma.$disconnect();
     process.exit(1);

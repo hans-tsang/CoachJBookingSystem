@@ -13,7 +13,7 @@ export interface EmailProvider {
 
 class ConsoleEmailProvider implements EmailProvider {
   async send(message: EmailMessage): Promise<{ id?: string }> {
-    // eslint-disable-next-line no-console
+     
     console.info("[email:console]", JSON.stringify(message, null, 2));
     return { id: "console" };
   }
