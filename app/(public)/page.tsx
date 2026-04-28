@@ -1,24 +1,28 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { getSettings } from "@/lib/settings";
+import { areBookingsOpen, getSettings } from "@/lib/settings";
 import { formatMonthDay } from "@/lib/utils";
 import { BookingForm } from "@/components/booking-form";
+import { BookingsCountdown } from "@/components/bookings-countdown";
 
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
   const settings = await getSettings();
+  const bookingsOpen = areBookingsOpen(settings.bookingsOpenAt);
 
-  const slots = await prisma.slot.findMany({
-    where: { date: settings.trainingDate },
-    orderBy: { order: "asc" },
-    include: {
-      bookings: {
-        where: { status: { not: "Cancelled" } },
-        select: { status: true },
-      },
-    },
-  });
+  const slots = bookingsOpen
+    ? await prisma.slot.findMany({
+        where: { date: settings.trainingDate },
+        orderBy: { order: "asc" },
+        include: {
+          bookings: {
+            where: { status: { not: "Cancelled" } },
+            select: { status: true },
+          },
+        },
+      })
+    : [];
 
   const slotData = slots.map((slot) => ({
     id: slot.id,
@@ -48,7 +52,11 @@ export default async function HomePage() {
       </header>
 
       <section>
-        <BookingForm slots={slotData} />
+        {bookingsOpen || !settings.bookingsOpenAt ? (
+          <BookingForm slots={slotData} />
+        ) : (
+          <BookingsCountdown openAtISO={settings.bookingsOpenAt.toISOString()} />
+        )}
       </section>
 
       <footer className="border-t border-[var(--color-border)] pt-6 text-sm">

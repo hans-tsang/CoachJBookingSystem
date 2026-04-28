@@ -52,6 +52,7 @@ export async function updateSettingsAction(
     trainingDate: formData.get("trainingDate"),
     coachFee: formData.get("coachFee"),
     gymFee: formData.get("gymFee"),
+    bookingsOpenAt: formData.get("bookingsOpenAt") ?? "",
   });
   if (!parsed.success) {
     return { ok: false, error: "Please check the values and try again." };

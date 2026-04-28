@@ -23,6 +23,47 @@ export type AdminBookingRow = {
 
 type SortKey = "createdAt" | "name" | "slotTime" | "status" | "paid";
 
+function PaidToggle({ id, paid }: { id: string; paid: boolean }) {
+  // Optimistic UI: flip immediately, revert on error. Works around the perception
+  // that the underlying server action ("mark paid") feels unresponsive.
+  const [optimisticPaid, setOptimisticPaid] = React.useOptimistic(paid);
+  const [isPending, startTransition] = React.useTransition();
+  const { toast } = useToast();
+
+  const onClick = () => {
+    const next = !optimisticPaid;
+    startTransition(async () => {
+      setOptimisticPaid(next);
+      try {
+        const fd = new FormData();
+        fd.set("id", id);
+        fd.set("paid", String(next));
+        await markPaidAction(fd);
+      } catch {
+        // useOptimistic auto-reverts when the transition ends without a server-confirmed update.
+        toast({
+          title: "Couldn't update",
+          description: "Failed to update payment status. Please try again.",
+          variant: "error",
+        });
+      }
+    });
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={isPending}
+      aria-pressed={optimisticPaid}
+      aria-label={optimisticPaid ? "Mark unpaid" : "Mark paid"}
+      className="focus-ring inline-flex h-5 w-5 items-center justify-center rounded border border-[var(--color-border)] disabled:opacity-50"
+    >
+      {optimisticPaid ? "✓" : ""}
+    </button>
+  );
+}
+
 export function BookingsTable({ rows }: { rows: AdminBookingRow[] }) {
   const [sortKey, setSortKey] = React.useState<SortKey>("createdAt");
   const [sortDir, setSortDir] = React.useState<"asc" | "desc">("asc");
@@ -118,17 +159,7 @@ export function BookingsTable({ rows }: { rows: AdminBookingRow[] }) {
                 </span>
               </TD>
               <TD>
-                <form action={markPaidAction}>
-                  <input type="hidden" name="id" value={r.id} />
-                  <input type="hidden" name="paid" value={(!r.paid).toString()} />
-                  <button
-                    type="submit"
-                    className="focus-ring inline-flex h-5 w-5 items-center justify-center rounded border border-[var(--color-border)]"
-                    aria-label={r.paid ? "Mark unpaid" : "Mark paid"}
-                  >
-                    {r.paid ? "✓" : ""}
-                  </button>
-                </form>
+                <PaidToggle id={r.id} paid={r.paid} />
               </TD>
               <TD className="text-xs">{r.payment}</TD>
               <TD className="text-xs">{r.uber ? "Yes" : "—"}</TD>

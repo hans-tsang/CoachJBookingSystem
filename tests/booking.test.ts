@@ -280,3 +280,140 @@ describeIfDb("cancelBooking — waitlist promotion", () => {
     expect(actions).toContain("promote");
   });
 });
+
+describeIfDb("markPaid — toggles paid flag and writes audit log", () => {
+  it("toggles paid in both directions and writes audit log entries", async () => {
+    const slot = await makeSlot(2);
+    const { createBooking, markPaid } = await getBookingLib();
+    const created = await createBooking({
+      slotId: slot.id,
+      name: "Alice",
+      whatsapp: "85291112222",
+      uber: false,
+      payment: "PayMe",
+    });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+
+    await markPaid(created.bookingId, true);
+    let row = await prisma.booking.findUnique({ where: { id: created.bookingId } });
+    expect(row?.paid).toBe(true);
+
+    await markPaid(created.bookingId, false);
+    row = await prisma.booking.findUnique({ where: { id: created.bookingId } });
+    expect(row?.paid).toBe(false);
+
+    const logs = await prisma.auditLog.findMany({
+      where: { action: "markPaid" },
+      orderBy: { createdAt: "asc" },
+    });
+    expect(logs.length).toBe(2);
+    expect(JSON.parse(logs[0].payload)).toMatchObject({
+      bookingId: created.bookingId,
+      paid: true,
+    });
+    expect(JSON.parse(logs[1].payload)).toMatchObject({
+      bookingId: created.bookingId,
+      paid: false,
+    });
+  });
+});
+
+describeIfDb("settings — bookingsOpenAt round-trip", () => {
+  it("stores and reads back bookingsOpenAt; empty string clears the gate", async () => {
+    const { getSettings, updateSettings } = await import("@/lib/settings");
+    const iso = "2026-05-02T10:00:00.000Z";
+    await updateSettings({
+      gymLocation: "Test Gym",
+      trainingDate: "2026-05-02",
+      coachFee: 150,
+      gymFee: 100,
+      bookingsOpenAt: iso,
+    });
+    let s = await getSettings();
+    expect(s.bookingsOpenAt?.toISOString()).toBe(iso);
+
+    // Clearing.
+    await updateSettings({
+      gymLocation: "Test Gym",
+      trainingDate: "2026-05-02",
+      coachFee: 150,
+      gymFee: 100,
+      bookingsOpenAt: "",
+    });
+    s = await getSettings();
+    expect(s.bookingsOpenAt).toBeNull();
+  });
+});
+
+describeIfDb("createBookingAction — bookings-open gate", () => {
+  it("rejects bookings before openAt and accepts after", async () => {
+    const slot = await makeSlot(2);
+    const { updateSettings } = await import("@/lib/settings");
+    const { createBookingAction } = await import("@/app/(public)/actions");
+
+    // Gate set to the far future.
+    const future = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    await updateSettings({
+      gymLocation: "Test Gym",
+      trainingDate: "2026-05-02",
+      coachFee: 150,
+      gymFee: 100,
+      bookingsOpenAt: future,
+    });
+
+    const fd = new FormData();
+    fd.set("slotId", slot.id);
+    fd.set("name", "Gated User");
+    fd.set("whatsapp", "85291110000");
+    fd.set("payment", "PayMe");
+    const blocked = await createBookingAction(null, fd);
+    expect(blocked.ok).toBe(false);
+    if (!blocked.ok) {
+      expect(blocked.error.toLowerCase()).toContain("not open");
+    }
+
+    // Open the gate.
+    await updateSettings({
+      gymLocation: "Test Gym",
+      trainingDate: "2026-05-02",
+      coachFee: 150,
+      gymFee: 100,
+      bookingsOpenAt: "",
+    });
+
+    const fd2 = new FormData();
+    fd2.set("slotId", slot.id);
+    fd2.set("name", "Open User");
+    fd2.set("whatsapp", "85291110001");
+    fd2.set("payment", "PayMe");
+    // createBookingAction calls redirect() on success which throws NEXT_REDIRECT.
+    let redirected = false;
+    try {
+      await createBookingAction(null, fd2);
+    } catch (err) {
+      // next/navigation redirect() signals via a thrown error; treat as success.
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("NEXT_REDIRECT")) redirected = true;
+      else throw err;
+    }
+    expect(redirected).toBe(true);
+
+    const row = await prisma.booking.findFirst({ where: { name: "Open User" } });
+    expect(row).not.toBeNull();
+  });
+});
+
+describe("areBookingsOpen", () => {
+  it("returns true when openAt is null", async () => {
+    const { areBookingsOpen } = await import("@/lib/settings");
+    expect(areBookingsOpen(null)).toBe(true);
+  });
+  it("returns false strictly before openAt and true at/after", async () => {
+    const { areBookingsOpen } = await import("@/lib/settings");
+    const openAt = new Date("2026-05-02T10:00:00.000Z");
+    expect(areBookingsOpen(openAt, new Date("2026-05-02T09:59:59.999Z"))).toBe(false);
+    expect(areBookingsOpen(openAt, new Date("2026-05-02T10:00:00.000Z"))).toBe(true);
+    expect(areBookingsOpen(openAt, new Date("2026-05-02T10:00:00.001Z"))).toBe(true);
+  });
+});

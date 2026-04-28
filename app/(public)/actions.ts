@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { createBookingSchema, cancelBookingSchema } from "@/lib/validators";
 import { createBooking, cancelBooking } from "@/lib/booking";
+import { areBookingsOpen, getSettings } from "@/lib/settings";
 
 export type ActionResult<T = undefined> =
   | { ok: true; data?: T }
@@ -26,6 +27,14 @@ export async function createBookingAction(
       ok: false,
       error: "Please check your details and try again.",
       fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+    };
+  }
+
+  const settings = await getSettings();
+  if (!areBookingsOpen(settings.bookingsOpenAt)) {
+    return {
+      ok: false,
+      error: "Bookings are not open yet. Please wait until the countdown ends.",
     };
   }
 
