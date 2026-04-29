@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { formatRoster, parseTimeLabel, type SlotWithBookings } from "@/lib/roster";
+import {
+  formatRoster,
+  formatPaymentSummary,
+  parseTimeLabel,
+  type SlotWithBookings,
+  type PaymentBooking,
+} from "@/lib/roster";
 
 const baseTime = new Date("2025-01-01T00:00:00Z").getTime();
 const t = (offsetSec: number) => new Date(baseTime + offsetSec * 1000);
@@ -116,5 +122,58 @@ describe("formatRoster", () => {
     const thirdIdx = out.indexOf("Third");
     expect(firstIdx).toBeLessThan(secondIdx);
     expect(secondIdx).toBeLessThan(thirdIdx);
+  });
+});
+
+describe("formatPaymentSummary", () => {
+  const date = new Date(Date.UTC(2025, 3, 25)); // Apr 25 2025
+
+  it("renders header, fees, and per-person totals with paid ticks and uber breakdown", () => {
+    const bookings: PaymentBooking[] = [
+      { name: "Aiko", uber: false, paid: true, amount: null, status: "Confirmed", createdAt: t(1) },
+      { name: "Pats", uber: true, paid: true, amount: 232, status: "Confirmed", createdAt: t(2) },
+      { name: "Natalia", uber: true, paid: false, amount: 232, status: "Confirmed", createdAt: t(3) },
+      { name: "Mandeep", uber: false, paid: false, amount: null, status: "Confirmed", createdAt: t(4) },
+    ];
+    const out = formatPaymentSummary(date, 150, 40, bookings);
+    expect(out).toMatchInlineSnapshot(`
+      "*HYROX training fee - Apr 25*
+
+      Coach Training Fee - $150
+      Gym Fee - $40
+
+      Aiko- $190✅
+      Pats- $190+Uber $42 =$232✅
+      Natalia- $190+Uber $42 =$232
+      Mandeep- $190"
+    `);
+  });
+
+  it("orders confirmed bookings by createdAt ASC and excludes cancelled/waitlist", () => {
+    const bookings: PaymentBooking[] = [
+      { name: "Third", uber: false, paid: false, amount: null, status: "Confirmed", createdAt: t(30) },
+      { name: "Cancelled", uber: false, paid: true, amount: null, status: "Cancelled", createdAt: t(15) },
+      { name: "Waitlisted", uber: false, paid: false, amount: null, status: "Waitlist", createdAt: t(15) },
+      { name: "First", uber: false, paid: false, amount: null, status: "Confirmed", createdAt: t(10) },
+      { name: "Second", uber: false, paid: false, amount: null, status: "Confirmed", createdAt: t(20) },
+    ];
+    const out = formatPaymentSummary(date, 150, 40, bookings);
+    expect(out).not.toContain("Cancelled");
+    expect(out).not.toContain("Waitlisted");
+    const firstIdx = out.indexOf("First");
+    const secondIdx = out.indexOf("Second");
+    const thirdIdx = out.indexOf("Third");
+    expect(firstIdx).toBeLessThan(secondIdx);
+    expect(secondIdx).toBeLessThan(thirdIdx);
+  });
+
+  it("falls back to base total when uber is true but amount is not set above base", () => {
+    const bookings: PaymentBooking[] = [
+      // Uber checked but no recorded amount — surface base only (no breakdown).
+      { name: "Solo", uber: true, paid: false, amount: null, status: "Confirmed", createdAt: t(1) },
+    ];
+    const out = formatPaymentSummary(date, 150, 40, bookings);
+    expect(out).toContain("Solo- $190");
+    expect(out).not.toContain("+Uber");
   });
 });

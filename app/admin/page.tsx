@@ -2,7 +2,13 @@ import { redirect } from "next/navigation";
 import { isAuthenticated } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getSettings } from "@/lib/settings";
-import { formatRoster, type SlotWithBookings, type RosterBooking } from "@/lib/roster";
+import {
+  formatRoster,
+  formatPaymentSummary,
+  type SlotWithBookings,
+  type RosterBooking,
+  type PaymentBooking,
+} from "@/lib/roster";
 import { toISODate } from "@/lib/utils";
 import { AdminDashboard } from "@/components/admin-dashboard";
 import type { AdminBookingRow } from "@/components/bookings-table";
@@ -44,6 +50,24 @@ export default async function AdminPage() {
     slotsForRoster,
   );
 
+  const paymentBookings: PaymentBooking[] = slots.flatMap((slot) =>
+    slot.bookings.map<PaymentBooking>((b) => ({
+      name: b.name,
+      uber: b.uber,
+      paid: b.paid,
+      amount: b.amount,
+      status: b.status === "Waitlist" ? "Waitlist" : b.status === "Cancelled" ? "Cancelled" : "Confirmed",
+      createdAt: b.createdAt,
+    })),
+  );
+
+  const paymentSummaryText = formatPaymentSummary(
+    settings.trainingDate,
+    settings.coachFee,
+    settings.gymFee,
+    paymentBookings,
+  );
+
   const bookings: AdminBookingRow[] = slots.flatMap((slot) =>
     slot.bookings.map((b) => ({
       id: b.id,
@@ -64,6 +88,7 @@ export default async function AdminPage() {
   return (
     <AdminDashboard
       rosterText={rosterText}
+      paymentSummaryText={paymentSummaryText}
       bookings={bookings}
       slots={slots.map((s) => ({ id: s.id, time: s.time, capacity: s.capacity, order: s.order }))}
       settings={{
