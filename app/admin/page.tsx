@@ -4,10 +4,8 @@ import { prisma } from "@/lib/db";
 import { getSettings } from "@/lib/settings";
 import {
   formatRoster,
-  formatPaymentSummary,
   type SlotWithBookings,
   type RosterBooking,
-  type PaymentBooking,
 } from "@/lib/roster";
 import { toISODate } from "@/lib/utils";
 import { AdminDashboard } from "@/components/admin-dashboard";
@@ -50,24 +48,9 @@ export default async function AdminPage() {
     slotsForRoster,
   );
 
-  const paymentBookings: PaymentBooking[] = slots.flatMap((slot) =>
-    slot.bookings.map<PaymentBooking>((b) => ({
-      name: b.name,
-      uber: b.uber,
-      paid: b.paid,
-      amount: b.amount,
-      status: b.status === "Waitlist" ? "Waitlist" : b.status === "Cancelled" ? "Cancelled" : "Confirmed",
-      createdAt: b.createdAt,
-    })),
-  );
-
-  const paymentSummaryText = formatPaymentSummary(
-    settings.trainingDate,
-    settings.coachFee,
-    settings.gymFee,
-    paymentBookings,
-  );
-
+  // Note: the WhatsApp payment summary is now formatted on the client from the
+  // bookings prop below, so it can refresh in real time when the Paid checkbox
+  // is toggled in the admin Bookings table.
   const bookings: AdminBookingRow[] = slots.flatMap((slot) =>
     slot.bookings.map((b) => ({
       id: b.id,
@@ -88,7 +71,6 @@ export default async function AdminPage() {
   return (
     <AdminDashboard
       rosterText={rosterText}
-      paymentSummaryText={paymentSummaryText}
       bookings={bookings}
       slots={slots.map((s) => ({ id: s.id, time: s.time, capacity: s.capacity, order: s.order }))}
       settings={{

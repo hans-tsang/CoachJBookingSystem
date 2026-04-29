@@ -3,20 +3,74 @@
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
+import { formatPaymentSummary, type PaymentBooking } from "@/lib/roster";
+import { parseISODate } from "@/lib/utils";
+import type { AdminBookingRow } from "./bookings-table";
 
 type Props = {
-  paymentSummaryText: string;
+  bookings: AdminBookingRow[];
+  coachFee: number;
+  gymFee: number;
+  /** Training date as YYYY-MM-DD (UTC). */
+  trainingDate: string;
 };
+
+function toPaymentBookings(rows: AdminBookingRow[]): PaymentBooking[] {
+  return rows.map((b) => ({
+    name: b.name,
+    uber: b.uber,
+    paid: b.paid,
+    amount: b.amount,
+    status:
+      b.status === "Waitlist"
+        ? "Waitlist"
+        : b.status === "Cancelled"
+          ? "Cancelled"
+          : "Confirmed",
+    createdAt: new Date(b.createdAt),
+  }));
+}
 
 /**
  * WhatsApp payment-summary panel shown above the bookings table. Mirrors the
  * pattern in RosterView: editable textarea + Copy + Share to WhatsApp buttons.
- * The textarea seeds from the server-rendered text and is locally editable;
- * a full page reload picks up newly generated text after fee/booking changes.
+ *
+ * The summary is computed client-side from the (optimistic) bookings prop so
+ * that ticking the Paid checkbox in the table refreshes the text in real time,
+ * without waiting for a page reload. The textarea remains locally editable;
+ * any pending edits are replaced when the upstream data changes (e.g. another
+ * booking is marked paid).
  */
-export function PaymentSummaryView({ paymentSummaryText }: Props) {
+export function PaymentSummaryView({
+  bookings,
+  coachFee,
+  gymFee,
+  trainingDate,
+}: Props) {
   const { toast } = useToast();
-  const [text, setText] = React.useState(paymentSummaryText);
+
+  const computed = React.useMemo(
+    () =>
+      formatPaymentSummary(
+        parseISODate(trainingDate),
+        coachFee,
+        gymFee,
+        toPaymentBookings(bookings),
+      ),
+    [bookings, coachFee, gymFee, trainingDate],
+  );
+
+  // Re-seed the editable textarea whenever the computed summary changes
+  // (e.g. when a Paid checkbox is toggled). Uses the "adjusting state during
+  // rendering" pattern from the React docs — React bails out and restarts the
+  // render with the new state, so this is the canonical alternative to a
+  // setState-in-effect (which the lint rule disallows).
+  const [text, setText] = React.useState(computed);
+  const [prevComputed, setPrevComputed] = React.useState(computed);
+  if (prevComputed !== computed) {
+    setPrevComputed(computed);
+    setText(computed);
+  }
 
   const copy = async () => {
     try {
