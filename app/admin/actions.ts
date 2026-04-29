@@ -16,6 +16,7 @@ import {
   createSession,
   updateSession,
   archiveSession,
+  unarchiveSession,
 } from "@/lib/session";
 import { createBooking, adminCancelBooking, markPaid } from "@/lib/booking";
 import { isPaymentMethod } from "@/lib/types";
@@ -116,6 +117,17 @@ export async function archiveSessionAction(formData: FormData): Promise<void> {
   revalidatePath("/admin");
   revalidatePath("/");
   redirect("/admin");
+}
+
+export async function unarchiveSessionAction(formData: FormData): Promise<void> {
+  await requireAdmin();
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  await unarchiveSession(id);
+  revalidatePath("/admin");
+  revalidatePath(`/admin/session/${id}`);
+  revalidatePath("/");
+  revalidatePath(`/session/${id}`);
 }
 
 // ---------- Slot CRUD ----------

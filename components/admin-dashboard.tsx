@@ -16,6 +16,7 @@ import {
   upsertSlotAction,
   deleteSlotAction,
   archiveSessionAction,
+  unarchiveSessionAction,
   logoutAction,
   type AdminActionResult,
 } from "@/app/admin/actions";
@@ -322,6 +323,17 @@ export function AdminDashboard(props: AdminDashboardProps) {
     });
   };
 
+  const onUnarchive = async () => {
+    const fd = new FormData();
+    fd.set("id", props.sessionId);
+    await unarchiveSessionAction(fd);
+    toast({
+      title: "Session reopened",
+      description: "The session is shown to the public again.",
+      variant: "success",
+    });
+  };
+
   return (
     <main className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-6">
       <header className="flex flex-wrap items-center justify-between gap-3">
@@ -349,7 +361,11 @@ export function AdminDashboard(props: AdminDashboardProps) {
             <Button variant="danger" onClick={onArchive}>
               Archive session
             </Button>
-          ) : null}
+          ) : (
+            <Button variant="secondary" onClick={onUnarchive}>
+              Reopen session
+            </Button>
+          )}
           <form action={logoutAction}>
             <Button type="submit" variant="ghost">
               Sign out
