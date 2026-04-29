@@ -87,12 +87,19 @@ export async function createBookingAction(
 }
 
 export async function cancelBookingAction(
-  _prev: ActionResult<{ promoted: string | null }> | null,
+  _prev: ActionResult<{
+    promoted: string | null;
+    sessionName: string;
+    slotTime: string;
+  }> | null,
   formData: FormData,
-): Promise<ActionResult<{ promoted: string | null }>> {
+): Promise<
+  ActionResult<{ promoted: string | null; sessionName: string; slotTime: string }>
+> {
   const parsed = cancelBookingSchema.safeParse({
     name: formData.get("name"),
     whatsapp: formData.get("whatsapp"),
+    sessionId: formData.get("sessionId") ?? undefined,
   });
   if (!parsed.success) {
     return {
@@ -105,9 +112,17 @@ export async function cancelBookingAction(
   const result = await cancelBooking({
     name: parsed.data.name,
     whatsapp: parsed.data.whatsapp,
+    sessionId: parsed.data.sessionId,
   });
 
   if (!result.ok) {
+    if (result.error === "MULTIPLE_MATCHES") {
+      return {
+        ok: false,
+        error:
+          "You have more than one active booking with that name and WhatsApp number. Please open the specific session page and tap “Need to cancel a booking?” there so we know which one to cancel.",
+      };
+    }
     return {
       ok: false,
       error: "We couldn't find a booking matching that name and WhatsApp. Please double-check.",
@@ -116,6 +131,10 @@ export async function cancelBookingAction(
 
   return {
     ok: true,
-    data: { promoted: result.promoted?.name ?? null },
+    data: {
+      promoted: result.promoted?.name ?? null,
+      sessionName: result.sessionName,
+      slotTime: result.slotTime,
+    },
   };
 }

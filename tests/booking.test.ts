@@ -281,6 +281,111 @@ describeIfDb("cancelBooking — waitlist promotion", () => {
     expect(r.ok).toBe(false);
   });
 
+  it("returns sessionName and slotTime in successful result", async () => {
+    const session = await makeSession({ name: "Saturday Drills" });
+    const slot = await makeSlot(2, session.id);
+    const { createBooking, cancelBooking } = await getBookingLib();
+    await createBooking({
+      slotId: slot.id,
+      name: "Alice",
+      whatsapp: "85291112222",
+      uber: false,
+      payment: "PayMe",
+    });
+    const r = await cancelBooking({ name: "Alice", whatsapp: "85291112222" });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.sessionName).toBe("Saturday Drills");
+      expect(r.slotTime).toBe(slot.time);
+    }
+  });
+
+  it("returns MULTIPLE_MATCHES when 2+ active bookings match name+whatsapp and no sessionId is given", async () => {
+    const sessionA = await makeSession({ name: "Session A" });
+    const sessionB = await makeSession({ name: "Session B" });
+    const slotA = await makeSlot(2, sessionA.id);
+    const slotB = await makeSlot(2, sessionB.id);
+    const { createBooking, cancelBooking } = await getBookingLib();
+    await createBooking({
+      slotId: slotA.id,
+      name: "Alice",
+      whatsapp: "85291112222",
+      uber: false,
+      payment: "PayMe",
+    });
+    await createBooking({
+      slotId: slotB.id,
+      name: "Alice",
+      whatsapp: "85291112222",
+      uber: false,
+      payment: "PayMe",
+    });
+    const r = await cancelBooking({ name: "Alice", whatsapp: "85291112222" });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toBe("MULTIPLE_MATCHES");
+
+    // Both bookings should still be active.
+    const active = await prisma.booking.findMany({
+      where: { whatsapp: "85291112222", status: { not: "Cancelled" } },
+    });
+    expect(active.length).toBe(2);
+  });
+
+  it("scopes cancellation to the given sessionId when multiple bookings match", async () => {
+    const sessionA = await makeSession({ name: "Session A" });
+    const sessionB = await makeSession({ name: "Session B" });
+    const slotA = await makeSlot(2, sessionA.id);
+    const slotB = await makeSlot(2, sessionB.id);
+    const { createBooking, cancelBooking } = await getBookingLib();
+    await createBooking({
+      slotId: slotA.id,
+      name: "Alice",
+      whatsapp: "85291112222",
+      uber: false,
+      payment: "PayMe",
+    });
+    await createBooking({
+      slotId: slotB.id,
+      name: "Alice",
+      whatsapp: "85291112222",
+      uber: false,
+      payment: "PayMe",
+    });
+    const r = await cancelBooking({
+      name: "Alice",
+      whatsapp: "85291112222",
+      sessionId: sessionA.id,
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.sessionName).toBe("Session A");
+
+    const aBooking = await prisma.booking.findFirst({ where: { slotId: slotA.id } });
+    const bBooking = await prisma.booking.findFirst({ where: { slotId: slotB.id } });
+    expect(aBooking?.status).toBe("Cancelled");
+    expect(bBooking?.status).toBe("Confirmed");
+  });
+
+  it("returns NOT_FOUND when sessionId scopes away the only matching booking", async () => {
+    const sessionA = await makeSession({ name: "Session A" });
+    const sessionB = await makeSession({ name: "Session B" });
+    const slotA = await makeSlot(2, sessionA.id);
+    const { createBooking, cancelBooking } = await getBookingLib();
+    await createBooking({
+      slotId: slotA.id,
+      name: "Alice",
+      whatsapp: "85291112222",
+      uber: false,
+      payment: "PayMe",
+    });
+    const r = await cancelBooking({
+      name: "Alice",
+      whatsapp: "85291112222",
+      sessionId: sessionB.id,
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toBe("NOT_FOUND");
+  });
+
   it("writes audit log entries for each mutation", async () => {
     const slot = await makeSlot(1);
     const { createBooking, cancelBooking } = await getBookingLib();

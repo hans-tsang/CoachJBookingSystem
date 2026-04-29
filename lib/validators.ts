@@ -39,6 +39,13 @@ export type CreateBookingInput = z.infer<typeof createBookingSchema>;
 export const cancelBookingSchema = z.object({
   name: trimmedString(120),
   whatsapp: whatsappField,
+  sessionId: z
+    .string()
+    .trim()
+    .min(1)
+    .max(200)
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
 });
 export type CancelBookingInput = z.infer<typeof cancelBookingSchema>;
 

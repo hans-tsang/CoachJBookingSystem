@@ -17,16 +17,24 @@ function SubmitButton() {
   );
 }
 
-export function CancelForm() {
+export function CancelForm({ sessionId }: { sessionId?: string } = {}) {
   const [state, formAction] = React.useActionState<
-    ActionResult<{ promoted: string | null }> | null,
+    ActionResult<{
+      promoted: string | null;
+      sessionName: string;
+      slotTime: string;
+    }> | null,
     FormData
   >(cancelBookingAction, null);
 
   if (state?.ok) {
     return (
       <div className="flex flex-col gap-4 rounded-md border border-[var(--color-success)] bg-[var(--color-success)]/10 p-4">
-        <p className="text-sm font-medium">Your booking has been cancelled.</p>
+        <p className="text-sm font-medium">
+          {state.data
+            ? `Your booking for ${state.data.sessionName} (${state.data.slotTime}) has been cancelled.`
+            : "Your booking has been cancelled."}
+        </p>
         {state.data?.promoted ? (
           <p className="text-sm text-[var(--color-muted-foreground)]">
             {state.data.promoted} has been promoted from the waitlist.
@@ -44,6 +52,7 @@ export function CancelForm() {
 
   return (
     <form action={formAction} className="flex flex-col gap-4" noValidate>
+      {sessionId ? <input type="hidden" name="sessionId" value={sessionId} /> : null}
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="name">Name</Label>
         <Input id="name" name="name" required autoComplete="name" />
