@@ -370,9 +370,11 @@ describeIfDb("settings — bookingsOpenAt round-trip", () => {
     });
     s = await getSettings();
     expect(s.bookingsCloseAt).toBeNull();
-    // Falls back to midnight at the start of the training date.
+    // Falls back to midnight at the start of the training date in the
+    // configured booking timezone (defaults to Asia/Shanghai = UTC+8).
+    const { defaultBookingsCloseAt } = await import("@/lib/settings");
     expect(s.effectiveBookingsCloseAt.toISOString()).toBe(
-      "2026-05-02T00:00:00.000Z",
+      defaultBookingsCloseAt(new Date("2026-05-02T00:00:00.000Z")).toISOString(),
     );
   });
 });
@@ -536,18 +538,34 @@ describe("getBookingsGateState", () => {
 });
 
 describe("defaultBookingsCloseAt", () => {
-  it("returns midnight UTC at the start of the training day", async () => {
+  it("returns local midnight at the start of the training day in the given timezone", async () => {
     const { defaultBookingsCloseAt } = await import("@/lib/settings");
     const trainingDate = new Date("2026-05-02T00:00:00.000Z");
-    expect(defaultBookingsCloseAt(trainingDate).toISOString()).toBe(
+    // Asia/Shanghai is UTC+8 (no DST), so local midnight 2026-05-02 = 2026-05-01T16:00:00Z.
+    expect(defaultBookingsCloseAt(trainingDate, "Asia/Shanghai").toISOString()).toBe(
+      "2026-05-01T16:00:00.000Z",
+    );
+  });
+  it("returns UTC midnight when timezone is UTC", async () => {
+    const { defaultBookingsCloseAt } = await import("@/lib/settings");
+    const trainingDate = new Date("2026-05-02T00:00:00.000Z");
+    expect(defaultBookingsCloseAt(trainingDate, "UTC").toISOString()).toBe(
       "2026-05-02T00:00:00.000Z",
     );
   });
   it("strips any time component from the training date", async () => {
     const { defaultBookingsCloseAt } = await import("@/lib/settings");
     const trainingDate = new Date("2026-05-02T15:30:45.000Z");
-    expect(defaultBookingsCloseAt(trainingDate).toISOString()).toBe(
+    expect(defaultBookingsCloseAt(trainingDate, "UTC").toISOString()).toBe(
       "2026-05-02T00:00:00.000Z",
     );
+  });
+  it("handles westward zones (negative offsets) correctly", async () => {
+    const { defaultBookingsCloseAt } = await import("@/lib/settings");
+    const trainingDate = new Date("2026-05-02T00:00:00.000Z");
+    // America/New_York on 2026-05-02 is UTC-4 (EDT), so local midnight = 2026-05-02T04:00:00Z.
+    expect(
+      defaultBookingsCloseAt(trainingDate, "America/New_York").toISOString(),
+    ).toBe("2026-05-02T04:00:00.000Z");
   });
 });

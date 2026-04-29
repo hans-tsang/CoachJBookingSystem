@@ -16,24 +16,84 @@ export type AppSettings = {
   /**
    * Resolved close instant used to gate bookings. Equals `bookingsCloseAt`
    * when set, otherwise defaults to midnight at the start of `trainingDate`
-   * (i.e., the night before the training day's midnight).
+   * in the configured booking timezone (see `getBookingsTimezone`) — i.e.,
+   * "the night before training day's local midnight".
    */
   effectiveBookingsCloseAt: Date;
 };
 
 /**
- * Default close instant when no override is configured: midnight at the start
- * of the training day in UTC. Equivalent to "the night before training date's
- * midnight".
+ * IANA timezone used to anchor "midnight at the start of the training day"
+ * when computing the default booking close instant. Configurable via the
+ * `BOOKINGS_TIMEZONE` environment variable; defaults to `Asia/Shanghai` to
+ * match the deployment context. If the configured value is not a valid IANA
+ * zone, falls back to UTC.
  */
-export function defaultBookingsCloseAt(trainingDate: Date): Date {
-  return new Date(
-    Date.UTC(
-      trainingDate.getUTCFullYear(),
-      trainingDate.getUTCMonth(),
-      trainingDate.getUTCDate(),
-    ),
+export function getBookingsTimezone(): string {
+  const tz = process.env.BOOKINGS_TIMEZONE;
+  if (tz && tz.length > 0) {
+    try {
+      // Validate by attempting to format with the supplied timezone.
+      new Intl.DateTimeFormat("en-US", { timeZone: tz });
+      return tz;
+    } catch {
+      // Fall through to default below.
+    }
+  }
+  return "Asia/Shanghai";
+}
+
+/**
+ * Returns the offset (in milliseconds) between the given timezone and UTC
+ * for a particular instant: `localWallClockTime - utcTime`. Positive values
+ * mean the timezone is ahead of UTC (e.g. +8h for Asia/Shanghai).
+ */
+function getTimezoneOffsetMs(instant: Date, timeZone: string): number {
+  const dtf = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+  const parts = dtf.formatToParts(instant);
+  const map: Record<string, string> = {};
+  for (const p of parts) if (p.type !== "literal") map[p.type] = p.value;
+  // `hour` may be reported as "24" at midnight in some locales; normalise.
+  const hour = Number(map.hour) === 24 ? 0 : Number(map.hour);
+  const asUtc = Date.UTC(
+    Number(map.year),
+    Number(map.month) - 1,
+    Number(map.day),
+    hour,
+    Number(map.minute),
+    Number(map.second),
   );
+  return asUtc - instant.getTime();
+}
+
+/**
+ * Default close instant when no override is configured: midnight at the start
+ * of the training day in the configured booking timezone (see
+ * `getBookingsTimezone`). Equivalent to "the night before training date's
+ * midnight" in that timezone.
+ */
+export function defaultBookingsCloseAt(
+  trainingDate: Date,
+  timeZone: string = getBookingsTimezone(),
+): Date {
+  const utcMidnight = Date.UTC(
+    trainingDate.getUTCFullYear(),
+    trainingDate.getUTCMonth(),
+    trainingDate.getUTCDate(),
+  );
+  // Compute the offset at the candidate instant; subtracting it shifts UTC
+  // midnight back to local-wall-clock midnight in the target timezone.
+  const offset = getTimezoneOffsetMs(new Date(utcMidnight), timeZone);
+  return new Date(utcMidnight - offset);
 }
 
 const DEFAULTS = {
