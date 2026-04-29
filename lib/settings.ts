@@ -1,26 +1,5 @@
 import { prisma } from "./db";
-import { nextSaturday, toISODate } from "./utils";
-
-export type AppSettings = {
-  gymLocation: string;
-  trainingDate: Date;
-  coachFee: number;
-  gymFee: number;
-  /** Bookings are gated until this instant. Null = open immediately. */
-  bookingsOpenAt: Date | null;
-  /**
-   * Admin-configured close instant. Null when no override is stored, in which
-   * case `effectiveBookingsCloseAt` falls back to the start of `trainingDate`.
-   */
-  bookingsCloseAt: Date | null;
-  /**
-   * Resolved close instant used to gate bookings. Equals `bookingsCloseAt`
-   * when set, otherwise defaults to midnight at the start of `trainingDate`
-   * in the configured booking timezone (see `getBookingsTimezone`) — i.e.,
-   * "the night before training day's local midnight".
-   */
-  effectiveBookingsCloseAt: Date;
-};
+import { toISODate } from "./utils";
 
 /**
  * IANA timezone used to anchor "midnight at the start of the training day"
@@ -62,7 +41,6 @@ function getTimezoneOffsetMs(instant: Date, timeZone: string): number {
   const parts = dtf.formatToParts(instant);
   const map: Record<string, string> = {};
   for (const p of parts) if (p.type !== "literal") map[p.type] = p.value;
-  // `hour` may be reported as "24" at midnight in some locales; normalise.
   const hour = Number(map.hour) === 24 ? 0 : Number(map.hour);
   const asUtc = Date.UTC(
     Number(map.year),
@@ -78,8 +56,7 @@ function getTimezoneOffsetMs(instant: Date, timeZone: string): number {
 /**
  * Default close instant when no override is configured: midnight at the start
  * of the training day in the configured booking timezone (see
- * `getBookingsTimezone`). Equivalent to "the night before training date's
- * midnight" in that timezone.
+ * `getBookingsTimezone`).
  */
 export function defaultBookingsCloseAt(
   trainingDate: Date,
@@ -90,50 +67,14 @@ export function defaultBookingsCloseAt(
     trainingDate.getUTCMonth(),
     trainingDate.getUTCDate(),
   );
-  // Compute the offset at the candidate instant; subtracting it shifts UTC
-  // midnight back to local-wall-clock midnight in the target timezone.
   const offset = getTimezoneOffsetMs(new Date(utcMidnight), timeZone);
   return new Date(utcMidnight - offset);
 }
 
-const DEFAULTS = {
-  gymLocation: "TBD",
-  coachFee: "150",
-  gymFee: "100",
-};
-
-export async function getSettings(): Promise<AppSettings> {
-  const rows = await prisma.setting.findMany();
-  const map = new Map(rows.map((r) => [r.key, r.value]));
-
-  const trainingDateStr = map.get("trainingDate");
-  const trainingDate = trainingDateStr
-    ? new Date(`${trainingDateStr}T00:00:00.000Z`)
-    : nextSaturday();
-
-  const bookingsOpenAtStr = map.get("bookingsOpenAt");
-  let bookingsOpenAt: Date | null = null;
-  if (bookingsOpenAtStr) {
-    const parsed = new Date(bookingsOpenAtStr);
-    if (!Number.isNaN(parsed.getTime())) bookingsOpenAt = parsed;
-  }
-
-  const bookingsCloseAtStr = map.get("bookingsCloseAt");
-  let bookingsCloseAt: Date | null = null;
-  if (bookingsCloseAtStr) {
-    const parsed = new Date(bookingsCloseAtStr);
-    if (!Number.isNaN(parsed.getTime())) bookingsCloseAt = parsed;
-  }
-
-  return {
-    gymLocation: map.get("gymLocation") ?? DEFAULTS.gymLocation,
-    trainingDate,
-    coachFee: parseInt(map.get("coachFee") ?? DEFAULTS.coachFee, 10),
-    gymFee: parseInt(map.get("gymFee") ?? DEFAULTS.gymFee, 10),
-    bookingsOpenAt,
-    bookingsCloseAt,
-    effectiveBookingsCloseAt: bookingsCloseAt ?? defaultBookingsCloseAt(trainingDate),
-  };
+/** Resolves the effective close instant for a session, falling back to the
+ *  default (start-of-training-day in local timezone) when none is set. */
+export function effectiveCloseAt(date: Date, closeAt: Date | null): Date {
+  return closeAt ?? defaultBookingsCloseAt(date);
 }
 
 export async function getSetting(key: string): Promise<string | null> {
@@ -149,52 +90,9 @@ export async function setSetting(key: string, value: string): Promise<void> {
   });
 }
 
-export async function updateSettings(input: {
-  gymLocation: string;
-  trainingDate: string; // YYYY-MM-DD
-  coachFee: number;
-  gymFee: number;
-  /** ISO datetime string in UTC, or empty/null to clear (open immediately). */
-  bookingsOpenAt?: string | null;
-  /** ISO datetime string in UTC, or empty/null to clear (never auto-closes). */
-  bookingsCloseAt?: string | null;
-}): Promise<void> {
-  const bookingsOpenAtValue =
-    input.bookingsOpenAt && input.bookingsOpenAt.length > 0 ? input.bookingsOpenAt : "";
-  const bookingsCloseAtValue =
-    input.bookingsCloseAt && input.bookingsCloseAt.length > 0 ? input.bookingsCloseAt : "";
-  await prisma.$transaction([
-    prisma.setting.upsert({
-      where: { key: "gymLocation" },
-      create: { key: "gymLocation", value: input.gymLocation },
-      update: { value: input.gymLocation },
-    }),
-    prisma.setting.upsert({
-      where: { key: "trainingDate" },
-      create: { key: "trainingDate", value: input.trainingDate },
-      update: { value: input.trainingDate },
-    }),
-    prisma.setting.upsert({
-      where: { key: "coachFee" },
-      create: { key: "coachFee", value: String(input.coachFee) },
-      update: { value: String(input.coachFee) },
-    }),
-    prisma.setting.upsert({
-      where: { key: "gymFee" },
-      create: { key: "gymFee", value: String(input.gymFee) },
-      update: { value: String(input.gymFee) },
-    }),
-    prisma.setting.upsert({
-      where: { key: "bookingsOpenAt" },
-      create: { key: "bookingsOpenAt", value: bookingsOpenAtValue },
-      update: { value: bookingsOpenAtValue },
-    }),
-    prisma.setting.upsert({
-      where: { key: "bookingsCloseAt" },
-      create: { key: "bookingsCloseAt", value: bookingsCloseAtValue },
-      update: { value: bookingsCloseAtValue },
-    }),
-  ]);
+/** Site-wide branding name (defaults to "Coach J Bookings"). */
+export async function getSiteName(): Promise<string> {
+  return (await getSetting("siteName")) ?? "Coach J Bookings";
 }
 
 export { toISODate };

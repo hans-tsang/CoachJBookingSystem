@@ -38,7 +38,7 @@ describe("formatRoster", () => {
         ],
       },
     ];
-    const out = formatRoster(date, "Coach J Gym", 150, 100, slots);
+    const out = formatRoster("HYROX", date, "Coach J Gym", 150, 100, slots);
     expect(out).toMatchInlineSnapshot(`
       "*HYROX training on Jan 04*
 
@@ -71,7 +71,7 @@ describe("formatRoster", () => {
         ],
       },
     ];
-    const out = formatRoster(date, "Gym", 150, 100, slots);
+    const out = formatRoster("HYROX", date, "Gym", 150, 100, slots);
     expect(out).toContain("1. Alice");
     expect(out).toContain("2. Bob");
     expect(out).toContain("3. ");
@@ -98,7 +98,7 @@ describe("formatRoster", () => {
         ],
       },
     ];
-    const out = formatRoster(date, "Gym", 150, 100, slots);
+    const out = formatRoster("HYROX", date, "Gym", 150, 100, slots);
     expect(out.indexOf("09:30-11:00")).toBeLessThan(out.indexOf("13:30-15:00"));
     expect(out).not.toContain("Ghost");
   });
@@ -116,7 +116,7 @@ describe("formatRoster", () => {
         ],
       },
     ];
-    const out = formatRoster(date, "Gym", 150, 100, slots);
+    const out = formatRoster("HYROX", date, "Gym", 150, 100, slots);
     const firstIdx = out.indexOf("First");
     const secondIdx = out.indexOf("Second");
     const thirdIdx = out.indexOf("Third");
@@ -135,7 +135,7 @@ describe("formatPaymentSummary", () => {
       { name: "Natalia", uber: true, paid: false, amount: 232, status: "Confirmed", createdAt: t(3) },
       { name: "Mandeep", uber: false, paid: false, amount: null, status: "Confirmed", createdAt: t(4) },
     ];
-    const out = formatPaymentSummary(date, 150, 40, bookings);
+    const out = formatPaymentSummary("HYROX", date, 150, 40, bookings);
     expect(out).toMatchInlineSnapshot(`
       "*HYROX training fee - Apr 25*
 
@@ -157,7 +157,7 @@ describe("formatPaymentSummary", () => {
       { name: "First", uber: false, paid: false, amount: null, status: "Confirmed", createdAt: t(10) },
       { name: "Second", uber: false, paid: false, amount: null, status: "Confirmed", createdAt: t(20) },
     ];
-    const out = formatPaymentSummary(date, 150, 40, bookings);
+    const out = formatPaymentSummary("HYROX", date, 150, 40, bookings);
     expect(out).not.toContain("Cancelled");
     expect(out).not.toContain("Waitlisted");
     const firstIdx = out.indexOf("First");
@@ -172,7 +172,7 @@ describe("formatPaymentSummary", () => {
       // Uber checked but no recorded amount — surface base only (no breakdown).
       { name: "Solo", uber: true, paid: false, amount: null, status: "Confirmed", createdAt: t(1) },
     ];
-    const out = formatPaymentSummary(date, 150, 40, bookings);
+    const out = formatPaymentSummary("HYROX", date, 150, 40, bookings);
     expect(out).toContain("Solo- $190");
     expect(out).not.toContain("+Uber");
   });

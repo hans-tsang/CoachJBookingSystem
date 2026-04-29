@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useFormStatus } from "react-dom";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,11 +12,10 @@ import { RosterView } from "./roster-view";
 import { BookingsTable, type AdminBookingRow } from "./bookings-table";
 import { PaymentSummaryView } from "./payment-summary-view";
 import {
-  updateSettingsAction,
-  changePasswordAction,
+  updateSessionAction,
   upsertSlotAction,
   deleteSlotAction,
-  resetWeekAction,
+  archiveSessionAction,
   logoutAction,
   type AdminActionResult,
 } from "@/app/admin/actions";
@@ -28,18 +28,22 @@ export type AdminSlot = {
 };
 
 export type AdminDashboardProps = {
+  sessionId: string;
   rosterText: string;
   bookings: AdminBookingRow[];
   slots: AdminSlot[];
-  settings: {
-    gymLocation: string;
-    trainingDate: string;
+  session: {
+    name: string;
+    location: string;
+    /** YYYY-MM-DD */
+    date: string;
     coachFee: number;
     gymFee: number;
     /** ISO datetime string in UTC, or empty string if not gated. */
-    bookingsOpenAt: string;
+    openAt: string;
     /** ISO datetime string in UTC, or empty string if no auto-close. */
-    bookingsCloseAt: string;
+    closeAt: string;
+    isArchived: boolean;
   };
 };
 
@@ -93,11 +97,7 @@ function BookingsDateTimeField({
   defaultValue: string;
 }) {
   const [local, setLocal] = React.useState(() => isoToLocalInput(defaultValue));
-  // Server and client may resolve different timezones; render label client-only
-  // by reading inside a span with suppressed hydration warning.
   const tz = getLocalTimezone();
-  // Browsers interpret `datetime-local` values in the local timezone, so
-  // `new Date(local)` produces the correct UTC instant for submission.
   const isoUtc = local ? new Date(local).toISOString() : "";
   const inputId = `${name}-input`;
   return (
@@ -145,97 +145,81 @@ function PendingButton({ children, ...props }: React.ButtonHTMLAttributes<HTMLBu
 }
 
 function SettingsTab({
-  settings,
+  sessionId,
+  session,
 }: {
-  settings: AdminDashboardProps["settings"];
+  sessionId: string;
+  session: AdminDashboardProps["session"];
 }) {
   const [s, setS] = React.useState<AdminActionResult | null>(null);
-  const [p, setP] = React.useState<AdminActionResult | null>(null);
 
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-      <form
-        action={async (fd) => setS(await updateSettingsAction(s, fd))}
-        className="flex flex-col gap-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] p-4"
-      >
-        <h3 className="text-base font-semibold">Training settings</h3>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div className="flex flex-col gap-1.5 sm:col-span-2">
-            <Label htmlFor="gymLocation">Gym location</Label>
-            <Input id="gymLocation" name="gymLocation" defaultValue={settings.gymLocation} />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="trainingDate">Training date</Label>
-            <Input
-              id="trainingDate"
-              name="trainingDate"
-              type="date"
-              defaultValue={settings.trainingDate}
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="coachFee">Coach fee ($)</Label>
-            <Input
-              id="coachFee"
-              name="coachFee"
-              type="number"
-              min={0}
-              defaultValue={settings.coachFee}
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="gymFee">Gym fee ($)</Label>
-            <Input
-              id="gymFee"
-              name="gymFee"
-              type="number"
-              min={0}
-              defaultValue={settings.gymFee}
-            />
-          </div>
-          <BookingsDateTimeField
-            name="bookingsOpenAt"
-            label="Bookings open at"
-            helpText="Leave blank to open bookings immediately. While set in the future, the public page shows a countdown and submissions are blocked."
-            defaultValue={settings.bookingsOpenAt}
-          />
-          <BookingsDateTimeField
-            name="bookingsCloseAt"
-            label="Bookings close at"
-            helpText="Leave blank to default to midnight at the start of the training date (the night before training). Once this time passes, the public page shows a closed notice and submissions are blocked. Must be after the opening time."
-            defaultValue={settings.bookingsCloseAt}
-          />
+    <form
+      action={async (fd) => setS(await updateSessionAction(s, fd))}
+      className="flex flex-col gap-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] p-4"
+    >
+      <input type="hidden" name="id" value={sessionId} />
+      <h3 className="text-base font-semibold">Session settings</h3>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="flex flex-col gap-1.5 sm:col-span-2">
+          <Label htmlFor="name">Session name</Label>
+          <Input id="name" name="name" defaultValue={session.name} required />
         </div>
-        <FormFeedback state={s} />
-        <PendingButton>Save settings</PendingButton>
-      </form>
-
-      <form
-        action={async (fd) => setP(await changePasswordAction(p, fd))}
-        className="flex flex-col gap-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] p-4"
-      >
-        <h3 className="text-base font-semibold">Change admin password</h3>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="currentPassword">Current password</Label>
-          <Input id="currentPassword" name="currentPassword" type="password" required />
+        <div className="flex flex-col gap-1.5 sm:col-span-2">
+          <Label htmlFor="location">Location</Label>
+          <Input id="location" name="location" defaultValue={session.location} required />
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="newPassword">New password (min 8 chars)</Label>
-          <Input id="newPassword" name="newPassword" type="password" required minLength={8} />
+          <Label htmlFor="date">Date</Label>
+          <Input id="date" name="date" type="date" defaultValue={session.date} required />
         </div>
-        <FormFeedback state={p} />
-        <PendingButton>Update password</PendingButton>
-      </form>
-    </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="coachFee">Coach fee ($)</Label>
+          <Input
+            id="coachFee"
+            name="coachFee"
+            type="number"
+            min={0}
+            defaultValue={session.coachFee}
+            required
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="gymFee">Gym fee ($)</Label>
+          <Input
+            id="gymFee"
+            name="gymFee"
+            type="number"
+            min={0}
+            defaultValue={session.gymFee}
+            required
+          />
+        </div>
+        <BookingsDateTimeField
+          name="openAt"
+          label="Bookings open at"
+          helpText="Leave blank to open bookings immediately. While set in the future, the public page shows a countdown and submissions are blocked."
+          defaultValue={session.openAt}
+        />
+        <BookingsDateTimeField
+          name="closeAt"
+          label="Bookings close at"
+          helpText="Leave blank to default to midnight at the start of the session date (the night before training). Once this time passes, the public page shows a closed notice and submissions are blocked. Must be after the opening time."
+          defaultValue={session.closeAt}
+        />
+      </div>
+      <FormFeedback state={s} />
+      <PendingButton>Save settings</PendingButton>
+    </form>
   );
 }
 
 function SlotsTab({
+  sessionId,
   slots,
-  trainingDate,
 }: {
+  sessionId: string;
   slots: AdminSlot[];
-  trainingDate: string;
 }) {
   const [state, setState] = React.useState<AdminActionResult | null>(null);
   const [startTime, setStartTime] = React.useState("09:30");
@@ -244,7 +228,7 @@ function SlotsTab({
   return (
     <div className="flex flex-col gap-6">
       <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] p-4">
-        <h3 className="mb-3 text-base font-semibold">Slots for {trainingDate}</h3>
+        <h3 className="mb-3 text-base font-semibold">Slots</h3>
         {slots.length === 0 ? (
           <p className="text-sm text-[var(--color-muted-foreground)]">
             No slots yet — add one below.
@@ -280,7 +264,7 @@ function SlotsTab({
         className="flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] p-4"
       >
         <h3 className="text-base font-semibold">Add slot</h3>
-        <input type="hidden" name="trainingDate" value={trainingDate} />
+        <input type="hidden" name="sessionId" value={sessionId} />
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="startTime">Start time</Label>
@@ -316,24 +300,24 @@ function SlotsTab({
 
 export function AdminDashboard(props: AdminDashboardProps) {
   const { toast } = useToast();
-  // Shared optimistic view of bookings so the Paid toggle in the table and the
-  // Payment summary panel update from a single source of truth in real time.
   const [optimisticBookings, applyOptimisticPaid] = React.useOptimistic(
     props.bookings,
     (state, update: { id: string; paid: boolean }) =>
       state.map((b) => (b.id === update.id ? { ...b, paid: update.paid } : b)),
   );
-  const onResetWeek = async () => {
+  const onArchive = async () => {
     if (
       !confirm(
-        "Archive this week's bookings and clear them? The training date will advance to the next Saturday.",
+        "Archive this session? It will no longer be shown to the public, but the bookings remain on record.",
       )
     )
       return;
-    await resetWeekAction();
+    const fd = new FormData();
+    fd.set("id", props.sessionId);
+    await archiveSessionAction(fd);
     toast({
-      title: "Week reset",
-      description: "Bookings archived and date advanced.",
+      title: "Session archived",
+      description: "The session is no longer shown to the public.",
       variant: "success",
     });
   };
@@ -342,17 +326,30 @@ export function AdminDashboard(props: AdminDashboardProps) {
     <main className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-6">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
+          <Link
+            href="/admin"
+            className="text-xs text-[var(--color-muted-foreground)] underline-offset-4 hover:underline"
+          >
+            ← All sessions
+          </Link>
           <p className="text-xs font-medium uppercase tracking-wider text-[var(--color-brand)]">
-            HYROX Admin
+            {props.session.name}
           </p>
           <h1 className="text-2xl font-bold">
-            {props.settings.trainingDate} · {props.settings.gymLocation}
+            {props.session.date} · {props.session.location}
           </h1>
+          {props.session.isArchived ? (
+            <p className="text-xs font-medium text-[var(--color-muted-foreground)]">
+              (Archived)
+            </p>
+          ) : null}
         </div>
         <div className="flex gap-2">
-          <Button variant="danger" onClick={onResetWeek}>
-            Reset week
-          </Button>
+          {!props.session.isArchived ? (
+            <Button variant="danger" onClick={onArchive}>
+              Archive session
+            </Button>
+          ) : null}
           <form action={logoutAction}>
             <Button type="submit" variant="ghost">
               Sign out
@@ -375,10 +372,11 @@ export function AdminDashboard(props: AdminDashboardProps) {
             return (
               <div className="flex flex-col gap-4">
                 <PaymentSummaryView
+                  sessionName={props.session.name}
                   bookings={optimisticBookings}
-                  coachFee={props.settings.coachFee}
-                  gymFee={props.settings.gymFee}
-                  trainingDate={props.settings.trainingDate}
+                  coachFee={props.session.coachFee}
+                  gymFee={props.session.gymFee}
+                  trainingDate={props.session.date}
                 />
                 <BookingsTable
                   rows={optimisticBookings}
@@ -387,8 +385,9 @@ export function AdminDashboard(props: AdminDashboardProps) {
               </div>
             );
           if (active === "slots")
-            return <SlotsTab slots={props.slots} trainingDate={props.settings.trainingDate} />;
-          if (active === "settings") return <SettingsTab settings={props.settings} />;
+            return <SlotsTab sessionId={props.sessionId} slots={props.slots} />;
+          if (active === "settings")
+            return <SettingsTab sessionId={props.sessionId} session={props.session} />;
           return null;
         }}
       </Tabs>

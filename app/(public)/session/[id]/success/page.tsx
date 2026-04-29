@@ -6,11 +6,20 @@ type SearchParams = Promise<{
   name?: string;
 }>;
 
-export default async function SuccessPage({ searchParams }: { searchParams: SearchParams }) {
-  const params = await searchParams;
-  const status = params.status === "Waitlist" ? "Waitlist" : "Confirmed";
-  const position = params.position;
-  const name = params.name ?? "";
+type Params = Promise<{ id: string }>;
+
+export default async function SuccessPage({
+  params,
+  searchParams,
+}: {
+  params: Params;
+  searchParams: SearchParams;
+}) {
+  const { id } = await params;
+  const sp = await searchParams;
+  const status = sp.status === "Waitlist" ? "Waitlist" : "Confirmed";
+  const position = sp.position;
+  const name = sp.name ?? "";
 
   return (
     <main className="mx-auto flex w-full max-w-md flex-col gap-6 px-4 py-12 text-center">
@@ -26,13 +35,24 @@ export default async function SuccessPage({ searchParams }: { searchParams: Sear
         </h1>
         <p className="mt-2 text-sm text-[var(--color-muted-foreground)]">
           {status === "Confirmed"
-            ? `Thanks${name ? `, ${name}` : ""}. See you on Saturday.`
+            ? `Thanks${name ? `, ${name}` : ""}. See you at the session.`
             : `Thanks${name ? `, ${name}` : ""}. You're #${position ?? "?"} on the waitlist — we'll email you if a spot opens up.`}
         </p>
       </div>
-      <Link href="/" className="text-sm text-[var(--color-brand)] underline-offset-4 hover:underline">
-        ← Back to bookings
-      </Link>
+      <div className="flex flex-col gap-2">
+        <Link
+          href={`/session/${id}`}
+          className="text-sm text-[var(--color-brand)] underline-offset-4 hover:underline"
+        >
+          ← Back to this session
+        </Link>
+        <Link
+          href="/"
+          className="text-sm text-[var(--color-muted-foreground)] underline-offset-4 hover:underline"
+        >
+          All sessions
+        </Link>
+      </div>
     </main>
   );
 }

@@ -8,6 +8,7 @@ import { parseISODate } from "@/lib/utils";
 import type { AdminBookingRow } from "./bookings-table";
 
 type Props = {
+  sessionName: string;
   bookings: AdminBookingRow[];
   coachFee: number;
   gymFee: number;
@@ -42,6 +43,7 @@ function toPaymentBookings(rows: AdminBookingRow[]): PaymentBooking[] {
  * booking is marked paid).
  */
 export function PaymentSummaryView({
+  sessionName,
   bookings,
   coachFee,
   gymFee,
@@ -52,12 +54,13 @@ export function PaymentSummaryView({
   const computed = React.useMemo(
     () =>
       formatPaymentSummary(
+        sessionName,
         parseISODate(trainingDate),
         coachFee,
         gymFee,
         toPaymentBookings(bookings),
       ),
-    [bookings, coachFee, gymFee, trainingDate],
+    [sessionName, bookings, coachFee, gymFee, trainingDate],
   );
 
   // Re-seed the editable textarea whenever the computed summary changes

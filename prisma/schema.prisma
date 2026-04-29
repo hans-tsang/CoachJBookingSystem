@@ -1,5 +1,6 @@
-// HYROX Bookings — Prisma schema
-// SQLite, single coach, weekly Saturday training
+// Coach J Bookings — Prisma schema
+// Multi-session booking system: each Session groups its own slots, fees,
+// location, date, and booking-window settings.
 
 generator client {
   provider = "prisma-client-js"
@@ -16,14 +17,29 @@ model Setting {
 }
 
 // Settings keys used at runtime:
-// - gymLocation        : string
-// - trainingDate       : ISO date (YYYY-MM-DD) of next Saturday
-// - coachFee           : integer (HKD whole dollars), stored as string
-// - gymFee             : integer (HKD whole dollars), stored as string
 // - adminPasswordHash  : bcrypt hash
+// - siteName           : optional display name (defaults to "Coach J Bookings")
+
+model Session {
+  id         String   @id @default(cuid())
+  name       String
+  location   String
+  date       DateTime
+  coachFee   Int
+  gymFee     Int
+  openAt     DateTime?
+  closeAt    DateTime?
+  isArchived Boolean  @default(false)
+  slots      Slot[]
+  createdAt  DateTime @default(now())
+
+  @@index([isArchived, date])
+}
 
 model Slot {
   id        String    @id @default(cuid())
+  sessionId String
+  session   Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   date      DateTime
   time      String
   capacity  Int
@@ -31,7 +47,8 @@ model Slot {
   bookings  Booking[]
   createdAt DateTime  @default(now())
 
-  @@unique([date, time])
+  @@unique([sessionId, time])
+  @@index([sessionId, order])
 }
 
 // Booking statuses (stored as string): "Confirmed" | "Waitlist" | "Cancelled"

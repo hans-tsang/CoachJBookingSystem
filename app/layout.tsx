@@ -4,8 +4,8 @@ import { ToastProvider } from "@/components/ui/toast";
 import { Analytics } from "@vercel/analytics/next";
 
 export const metadata: Metadata = {
-  title: "HYROX Bookings",
-  description: "Weekly Saturday HYROX training booking — Coach J",
+  title: "Coach J Bookings",
+  description: "Session booking system — Coach J",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
