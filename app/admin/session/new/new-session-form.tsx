@@ -8,14 +8,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createSessionAction, type AdminActionResult } from "@/app/admin/actions";
 
-function isoToLocalInput(iso: string): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
 function getLocalTimezone(): string {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -91,9 +83,6 @@ export function NewSessionForm() {
         setState(result);
       }}
       className="flex flex-col gap-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] p-4"
-      // Force a fresh hidden value on each render via key+isoToLocalInput pattern
-      // to keep the file readable; not strictly necessary here.
-      data-iso-helper={isoToLocalInput("")}
     >
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="flex flex-col gap-1.5 sm:col-span-2">

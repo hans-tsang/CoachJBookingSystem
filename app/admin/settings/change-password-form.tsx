@@ -17,10 +17,10 @@ function PendingButton({ children }: { children: React.ReactNode }) {
 }
 
 export function ChangePasswordForm() {
-  const [p, setP] = React.useState<AdminActionResult | null>(null);
+  const [passwordState, setPasswordState] = React.useState<AdminActionResult | null>(null);
   return (
     <form
-      action={async (fd) => setP(await changePasswordAction(p, fd))}
+      action={async (fd) => setPasswordState(await changePasswordAction(passwordState, fd))}
       className="flex flex-col gap-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] p-4"
     >
       <h3 className="text-base font-semibold">Change admin password</h3>
@@ -32,16 +32,16 @@ export function ChangePasswordForm() {
         <Label htmlFor="newPassword">New password (min 8 chars)</Label>
         <Input id="newPassword" name="newPassword" type="password" required minLength={8} />
       </div>
-      {p ? (
+      {passwordState ? (
         <p
           role="status"
           className={
-            p.ok
+            passwordState.ok
               ? "text-sm text-[var(--color-success)]"
               : "text-sm text-[var(--color-danger)]"
           }
         >
-          {p.ok ? p.message : p.error}
+          {passwordState.ok ? passwordState.message : passwordState.error}
         </p>
       ) : null}
       <PendingButton>Update password</PendingButton>
