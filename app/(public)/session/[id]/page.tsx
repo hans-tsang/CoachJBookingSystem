@@ -83,7 +83,7 @@ export default async function SessionPage({ params }: { params: Params }) {
 
       <footer className="border-t border-[var(--color-border)] pt-6 text-sm">
         <Link
-          href="/cancel"
+          href={`/cancel?sessionId=${session.id}`}
           className="text-[var(--color-muted-foreground)] underline-offset-4 hover:underline"
         >
           Need to cancel a booking?

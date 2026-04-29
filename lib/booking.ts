@@ -95,6 +95,7 @@ export async function createBooking(args: CreateBookingArgs): Promise<CreateBook
 export type CancelBookingArgs = {
   name: string;
   whatsapp: string; // digits-only
+  sessionId?: string;
 };
 
 export type CancelBookingResult =
@@ -103,8 +104,9 @@ export type CancelBookingResult =
       cancelledStatus: BookingStatus;
       promoted: { bookingId: string; name: string; email: string | null; slotTime: string } | null;
       slotTime: string;
+      sessionName: string;
     }
-  | { ok: false; error: "NOT_FOUND" };
+  | { ok: false; error: "NOT_FOUND" | "MULTIPLE_MATCHES" };
 
 export async function cancelBooking(args: CancelBookingArgs): Promise<CancelBookingResult> {
   const lowerName = args.name.trim().toLowerCase();
@@ -114,13 +116,23 @@ export async function cancelBooking(args: CancelBookingArgs): Promise<CancelBook
       where: {
         whatsapp: args.whatsapp,
         status: { not: "Cancelled" },
+        ...(args.sessionId ? { slot: { sessionId: args.sessionId } } : {}),
       },
-      include: { slot: true },
+      include: { slot: { include: { session: true } } },
       orderBy: { createdAt: "desc" },
     });
 
-    const match = candidates.find((b) => b.name.trim().toLowerCase() === lowerName);
-    if (!match) return { ok: false, error: "NOT_FOUND" } as const;
+    const matches = candidates.filter(
+      (b) => b.name.trim().toLowerCase() === lowerName,
+    );
+    if (matches.length === 0) return { ok: false, error: "NOT_FOUND" } as const;
+    // If the caller didn't scope to a specific session and multiple active
+    // bookings match, refuse to guess — let the UI ask the user to cancel
+    // from the specific session page.
+    if (matches.length > 1 && !args.sessionId) {
+      return { ok: false, error: "MULTIPLE_MATCHES" } as const;
+    }
+    const match = matches[0];
 
     const wasConfirmed = match.status === "Confirmed";
 
@@ -181,6 +193,7 @@ export async function cancelBooking(args: CancelBookingArgs): Promise<CancelBook
       cancelledStatus: match.status as BookingStatus,
       promoted,
       slotTime: match.slot.time,
+      sessionName: match.slot.session.name,
     };
   });
 
