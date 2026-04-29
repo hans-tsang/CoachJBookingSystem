@@ -3,7 +3,8 @@
 import { redirect } from "next/navigation";
 import { createBookingSchema, cancelBookingSchema } from "@/lib/validators";
 import { createBooking, cancelBooking } from "@/lib/booking";
-import { getBookingsGateState, getSettings } from "@/lib/settings";
+import { prisma } from "@/lib/db";
+import { getBookingsGateState, effectiveCloseAt } from "@/lib/settings";
 
 export type ActionResult<T = undefined> =
   | { ok: true; data?: T }
@@ -30,8 +31,21 @@ export async function createBookingAction(
     };
   }
 
-  const settings = await getSettings();
-  const gate = getBookingsGateState(settings.bookingsOpenAt, settings.effectiveBookingsCloseAt);
+  // Resolve the session for this slot to evaluate the booking gate.
+  const slot = await prisma.slot.findUnique({
+    where: { id: parsed.data.slotId },
+    include: { session: true },
+  });
+  if (!slot) {
+    return { ok: false, error: "That slot is no longer available. Please pick another." };
+  }
+  if (slot.session.isArchived) {
+    return { ok: false, error: "This session is no longer accepting bookings." };
+  }
+  const gate = getBookingsGateState(
+    slot.session.openAt,
+    effectiveCloseAt(slot.session.date, slot.session.closeAt),
+  );
   if (gate === "pending") {
     return {
       ok: false,
@@ -69,7 +83,7 @@ export async function createBookingAction(
     position: String(result.position),
     name: parsed.data.name,
   });
-  redirect(`/success?${params.toString()}`);
+  redirect(`/session/${slot.sessionId}/success?${params.toString()}`);
 }
 
 export async function cancelBookingAction(

@@ -47,6 +47,7 @@ beforeEach(async () => {
   sentEmails.length = 0;
   await prisma.booking.deleteMany();
   await prisma.slot.deleteMany();
+  await prisma.session.deleteMany();
   await prisma.auditLog.deleteMany();
 });
 
@@ -55,10 +56,36 @@ async function getBookingLib() {
   return await import("@/lib/booking");
 }
 
-async function makeSlot(capacity = 2) {
+async function makeSession(overrides: Partial<{
+  name: string;
+  location: string;
+  date: Date;
+  coachFee: number;
+  gymFee: number;
+  openAt: Date | null;
+  closeAt: Date | null;
+}> = {}) {
+  return prisma.session.create({
+    data: {
+      name: overrides.name ?? "Test Session",
+      location: overrides.location ?? "Test Gym",
+      date: overrides.date ?? new Date(Date.UTC(2026, 4, 2)),
+      coachFee: overrides.coachFee ?? 150,
+      gymFee: overrides.gymFee ?? 100,
+      openAt: overrides.openAt ?? null,
+      closeAt: overrides.closeAt ?? null,
+    },
+  });
+}
+
+async function makeSlot(capacity = 2, sessionId?: string) {
+  const session = sessionId
+    ? await prisma.session.findUniqueOrThrow({ where: { id: sessionId } })
+    : await makeSession();
   return prisma.slot.create({
     data: {
-      date: new Date(Date.UTC(2025, 0, 4)),
+      sessionId: session.id,
+      date: session.date,
       time: "09:30-11:00",
       capacity,
       order: 1,
@@ -319,61 +346,33 @@ describeIfDb("markPaid — toggles paid flag and writes audit log", () => {
   });
 });
 
-describeIfDb("settings — bookingsOpenAt round-trip", () => {
-  it("stores and reads back bookingsOpenAt; empty string clears the gate", async () => {
-    const { getSettings, updateSettings } = await import("@/lib/settings");
+describeIfDb("session — open/close round-trip", () => {
+  it("stores and reads back openAt; null clears the gate", async () => {
+    const session = await makeSession();
     const iso = "2026-05-02T10:00:00.000Z";
-    await updateSettings({
-      gymLocation: "Test Gym",
-      trainingDate: "2026-05-02",
-      coachFee: 150,
-      gymFee: 100,
-      bookingsOpenAt: iso,
-    });
-    let s = await getSettings();
-    expect(s.bookingsOpenAt?.toISOString()).toBe(iso);
+    await prisma.session.update({ where: { id: session.id }, data: { openAt: new Date(iso) } });
+    let row = await prisma.session.findUniqueOrThrow({ where: { id: session.id } });
+    expect(row.openAt?.toISOString()).toBe(iso);
 
-    // Clearing.
-    await updateSettings({
-      gymLocation: "Test Gym",
-      trainingDate: "2026-05-02",
-      coachFee: 150,
-      gymFee: 100,
-      bookingsOpenAt: "",
-    });
-    s = await getSettings();
-    expect(s.bookingsOpenAt).toBeNull();
+    await prisma.session.update({ where: { id: session.id }, data: { openAt: null } });
+    row = await prisma.session.findUniqueOrThrow({ where: { id: session.id } });
+    expect(row.openAt).toBeNull();
   });
 
-  it("stores and reads back bookingsCloseAt; empty string clears the gate", async () => {
-    const { getSettings, updateSettings } = await import("@/lib/settings");
+  it("stores and reads back closeAt; default falls back to start-of-training-day local midnight", async () => {
+    const session = await makeSession({ date: new Date("2026-05-02T00:00:00.000Z") });
     const closeIso = "2026-05-02T12:00:00.000Z";
-    await updateSettings({
-      gymLocation: "Test Gym",
-      trainingDate: "2026-05-02",
-      coachFee: 150,
-      gymFee: 100,
-      bookingsOpenAt: "",
-      bookingsCloseAt: closeIso,
-    });
-    let s = await getSettings();
-    expect(s.bookingsCloseAt?.toISOString()).toBe(closeIso);
-    expect(s.effectiveBookingsCloseAt.toISOString()).toBe(closeIso);
+    await prisma.session.update({ where: { id: session.id }, data: { closeAt: new Date(closeIso) } });
+    let row = await prisma.session.findUniqueOrThrow({ where: { id: session.id } });
+    expect(row.closeAt?.toISOString()).toBe(closeIso);
 
-    await updateSettings({
-      gymLocation: "Test Gym",
-      trainingDate: "2026-05-02",
-      coachFee: 150,
-      gymFee: 100,
-      bookingsOpenAt: "",
-      bookingsCloseAt: "",
-    });
-    s = await getSettings();
-    expect(s.bookingsCloseAt).toBeNull();
-    // Falls back to midnight at the start of the training date in the
-    // configured booking timezone (defaults to Asia/Shanghai = UTC+8).
-    const { defaultBookingsCloseAt } = await import("@/lib/settings");
-    expect(s.effectiveBookingsCloseAt.toISOString()).toBe(
+    const { effectiveCloseAt, defaultBookingsCloseAt } = await import("@/lib/settings");
+    expect(effectiveCloseAt(row.date, row.closeAt).toISOString()).toBe(closeIso);
+
+    await prisma.session.update({ where: { id: session.id }, data: { closeAt: null } });
+    row = await prisma.session.findUniqueOrThrow({ where: { id: session.id } });
+    expect(row.closeAt).toBeNull();
+    expect(effectiveCloseAt(row.date, row.closeAt).toISOString()).toBe(
       defaultBookingsCloseAt(new Date("2026-05-02T00:00:00.000Z")).toISOString(),
     );
   });
@@ -381,19 +380,10 @@ describeIfDb("settings — bookingsOpenAt round-trip", () => {
 
 describeIfDb("createBookingAction — bookings-open gate", () => {
   it("rejects bookings before openAt and accepts after", async () => {
-    const slot = await makeSlot(2);
-    const { updateSettings } = await import("@/lib/settings");
+    const future = new Date(Date.now() + 60 * 60 * 1000);
+    const session = await makeSession({ openAt: future });
+    const slot = await makeSlot(2, session.id);
     const { createBookingAction } = await import("@/app/(public)/actions");
-
-    // Gate set to the far future.
-    const future = new Date(Date.now() + 60 * 60 * 1000).toISOString();
-    await updateSettings({
-      gymLocation: "Test Gym",
-      trainingDate: "2026-05-02",
-      coachFee: 150,
-      gymFee: 100,
-      bookingsOpenAt: future,
-    });
 
     const fd = new FormData();
     fd.set("slotId", slot.id);
@@ -407,25 +397,17 @@ describeIfDb("createBookingAction — bookings-open gate", () => {
     }
 
     // Open the gate.
-    await updateSettings({
-      gymLocation: "Test Gym",
-      trainingDate: "2026-05-02",
-      coachFee: 150,
-      gymFee: 100,
-      bookingsOpenAt: "",
-    });
+    await prisma.session.update({ where: { id: session.id }, data: { openAt: null } });
 
     const fd2 = new FormData();
     fd2.set("slotId", slot.id);
     fd2.set("name", "Open User");
     fd2.set("whatsapp", "85291110001");
     fd2.set("payment", "PayMe");
-    // createBookingAction calls redirect() on success which throws NEXT_REDIRECT.
     let redirected = false;
     try {
       await createBookingAction(null, fd2);
     } catch (err) {
-      // next/navigation redirect() signals via a thrown error; treat as success.
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("NEXT_REDIRECT")) redirected = true;
       else throw err;
@@ -437,20 +419,10 @@ describeIfDb("createBookingAction — bookings-open gate", () => {
   });
 
   it("rejects bookings after closeAt", async () => {
-    const slot = await makeSlot(2);
-    const { updateSettings } = await import("@/lib/settings");
+    const past = new Date(Date.now() - 60 * 60 * 1000);
+    const session = await makeSession({ closeAt: past });
+    const slot = await makeSlot(2, session.id);
     const { createBookingAction } = await import("@/app/(public)/actions");
-
-    // Close gate already passed.
-    const past = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-    await updateSettings({
-      gymLocation: "Test Gym",
-      trainingDate: "2026-05-02",
-      coachFee: 150,
-      gymFee: 100,
-      bookingsOpenAt: "",
-      bookingsCloseAt: past,
-    });
 
     const fd = new FormData();
     fd.set("slotId", slot.id);
@@ -462,16 +434,6 @@ describeIfDb("createBookingAction — bookings-open gate", () => {
     if (!blocked.ok) {
       expect(blocked.error.toLowerCase()).toContain("closed");
     }
-
-    // Reset gate so other tests aren't affected.
-    await updateSettings({
-      gymLocation: "Test Gym",
-      trainingDate: "2026-05-02",
-      coachFee: 150,
-      gymFee: 100,
-      bookingsOpenAt: "",
-      bookingsCloseAt: "",
-    });
   });
 });
 

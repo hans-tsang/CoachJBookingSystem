@@ -46,17 +46,15 @@ export const adminLoginSchema = z.object({
   password: z.string().min(1, "Password is required").max(200),
 });
 
-export const settingsUpdateSchema = z
+export const sessionInputSchema = z
   .object({
-    gymLocation: trimmedString(200),
-    trainingDate: z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD"),
+    name: trimmedString(120),
+    location: trimmedString(200),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD"),
     coachFee: z.coerce.number().int().min(0).max(100000),
     gymFee: z.coerce.number().int().min(0).max(100000),
-    // ISO 8601 datetime string in UTC (e.g., "2026-05-02T10:00:00.000Z").
-    // Empty string is treated as "no gate" (bookings open immediately).
-    bookingsOpenAt: z
+    // ISO 8601 datetime string in UTC. Empty string = no gate.
+    openAt: z
       .string()
       .trim()
       .max(64)
@@ -66,9 +64,7 @@ export const settingsUpdateSchema = z
         (v) => v === "" || !Number.isNaN(new Date(v).getTime()),
         { message: "Enter a valid date/time" },
       ),
-    // ISO 8601 datetime string in UTC. Empty string means "never closes
-    // automatically".
-    bookingsCloseAt: z
+    closeAt: z
       .string()
       .trim()
       .max(64)
@@ -81,13 +77,15 @@ export const settingsUpdateSchema = z
   })
   .refine(
     (data) => {
-      if (!data.bookingsOpenAt || !data.bookingsCloseAt) return true;
-      const open = new Date(data.bookingsOpenAt).getTime();
-      const close = new Date(data.bookingsCloseAt).getTime();
+      if (!data.openAt || !data.closeAt) return true;
+      const open = new Date(data.openAt).getTime();
+      const close = new Date(data.closeAt).getTime();
       return close > open;
     },
-    { message: "Closing time must be after opening time", path: ["bookingsCloseAt"] },
+    { message: "Closing time must be after opening time", path: ["closeAt"] },
   );
+
+export type SessionInput = z.infer<typeof sessionInputSchema>;
 
 export const changePasswordSchema = z
   .object({
@@ -98,6 +96,7 @@ export const changePasswordSchema = z
 
 export const slotInputSchema = z.object({
   id: z.string().optional(),
+  sessionId: z.string().min(1, "Session is required"),
   time: z
     .string()
     .trim()

@@ -8,18 +8,16 @@ import { requireAdmin, login, logout, changePassword } from "@/lib/auth";
 import {
   adminLoginSchema,
   changePasswordSchema,
-  settingsUpdateSchema,
+  sessionInputSchema,
   slotInputSchema,
   walkinBookingSchema,
 } from "@/lib/validators";
-import { updateSettings, getSettings } from "@/lib/settings";
 import {
-  createBooking,
-  adminCancelBooking,
-  markPaid,
-  resetWeek,
-} from "@/lib/booking";
-import { parseISODate, nextSaturday, toISODate } from "@/lib/utils";
+  createSession,
+  updateSession,
+  archiveSession,
+} from "@/lib/session";
+import { createBooking, adminCancelBooking, markPaid } from "@/lib/booking";
 import { isPaymentMethod } from "@/lib/types";
 
 export type AdminActionResult =
@@ -42,28 +40,6 @@ export async function logoutAction() {
   redirect("/admin/login");
 }
 
-export async function updateSettingsAction(
-  _prev: AdminActionResult | null,
-  formData: FormData,
-): Promise<AdminActionResult> {
-  await requireAdmin();
-  const parsed = settingsUpdateSchema.safeParse({
-    gymLocation: formData.get("gymLocation"),
-    trainingDate: formData.get("trainingDate"),
-    coachFee: formData.get("coachFee"),
-    gymFee: formData.get("gymFee"),
-    bookingsOpenAt: formData.get("bookingsOpenAt") ?? "",
-    bookingsCloseAt: formData.get("bookingsCloseAt") ?? "",
-  });
-  if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Please check the values and try again." };
-  }
-  await updateSettings(parsed.data);
-  revalidatePath("/admin");
-  revalidatePath("/");
-  return { ok: true, message: "Settings saved." };
-}
-
 export async function changePasswordAction(
   _prev: AdminActionResult | null,
   formData: FormData,
@@ -84,11 +60,67 @@ export async function changePasswordAction(
   return { ok: true, message: "Password updated." };
 }
 
-const slotCrudSchema = slotInputSchema
-  .extend({
-    trainingDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  })
-  .partial({ order: true });
+// ---------- Session CRUD ----------
+
+function parseSessionForm(formData: FormData) {
+  return sessionInputSchema.safeParse({
+    name: formData.get("name"),
+    location: formData.get("location"),
+    date: formData.get("date"),
+    coachFee: formData.get("coachFee"),
+    gymFee: formData.get("gymFee"),
+    openAt: formData.get("openAt") ?? "",
+    closeAt: formData.get("closeAt") ?? "",
+  });
+}
+
+export async function createSessionAction(
+  _prev: AdminActionResult | null,
+  formData: FormData,
+): Promise<AdminActionResult> {
+  await requireAdmin();
+  const parsed = parseSessionForm(formData);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid session." };
+  }
+  const created = await createSession(parsed.data);
+  revalidatePath("/admin");
+  revalidatePath("/");
+  redirect(`/admin/session/${created.id}`);
+}
+
+export async function updateSessionAction(
+  _prev: AdminActionResult | null,
+  formData: FormData,
+): Promise<AdminActionResult> {
+  await requireAdmin();
+  const id = String(formData.get("id") ?? "");
+  if (!id) return { ok: false, error: "Missing session id." };
+  const parsed = parseSessionForm(formData);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid session." };
+  }
+  await updateSession(id, parsed.data);
+  revalidatePath("/admin");
+  revalidatePath(`/admin/session/${id}`);
+  revalidatePath("/");
+  revalidatePath(`/session/${id}`);
+  return { ok: true, message: "Session saved." };
+}
+
+export async function archiveSessionAction(formData: FormData): Promise<void> {
+  await requireAdmin();
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  await archiveSession(id);
+  revalidatePath("/admin");
+  revalidatePath("/");
+  redirect("/admin");
+}
+
+// ---------- Slot CRUD ----------
+
+const slotCrudSchema = slotInputSchema.partial({ order: true });
 
 export async function upsertSlotAction(
   _prev: AdminActionResult | null,
@@ -98,15 +130,17 @@ export async function upsertSlotAction(
   const orderRaw = formData.get("order");
   const parsed = slotCrudSchema.safeParse({
     id: formData.get("id") || undefined,
+    sessionId: formData.get("sessionId"),
     time: formData.get("time"),
     capacity: formData.get("capacity"),
     order: orderRaw === null || orderRaw === "" ? undefined : orderRaw,
-    trainingDate: formData.get("trainingDate"),
   });
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid slot." };
   }
-  const date = parseISODate(parsed.data.trainingDate);
+  const session = await prisma.session.findUnique({ where: { id: parsed.data.sessionId } });
+  if (!session) return { ok: false, error: "Session not found." };
+
   try {
     if (parsed.data.id) {
       await prisma.slot.update({
@@ -115,14 +149,14 @@ export async function upsertSlotAction(
           time: parsed.data.time,
           capacity: parsed.data.capacity,
           ...(parsed.data.order !== undefined ? { order: parsed.data.order } : {}),
-          date,
+          date: session.date,
         },
       });
     } else {
       let order = parsed.data.order;
       if (order === undefined) {
         const last = await prisma.slot.findFirst({
-          where: { date },
+          where: { sessionId: parsed.data.sessionId },
           orderBy: { order: "desc" },
           select: { order: true },
         });
@@ -130,17 +164,19 @@ export async function upsertSlotAction(
       }
       await prisma.slot.create({
         data: {
+          sessionId: parsed.data.sessionId,
           time: parsed.data.time,
           capacity: parsed.data.capacity,
           order,
-          date,
+          date: session.date,
         },
       });
     }
   } catch {
-    return { ok: false, error: "A slot with that time already exists for this date." };
+    return { ok: false, error: "A slot with that time already exists for this session." };
   }
-  revalidatePath("/admin");
+  revalidatePath(`/admin/session/${parsed.data.sessionId}`);
+  revalidatePath(`/session/${parsed.data.sessionId}`);
   revalidatePath("/");
   return { ok: true, message: "Slot saved." };
 }
@@ -149,10 +185,15 @@ export async function deleteSlotAction(formData: FormData): Promise<void> {
   await requireAdmin();
   const id = String(formData.get("id") ?? "");
   if (!id) return;
+  const slot = await prisma.slot.findUnique({ where: { id } });
+  if (!slot) return;
   await prisma.slot.delete({ where: { id } });
-  revalidatePath("/admin");
+  revalidatePath(`/admin/session/${slot.sessionId}`);
+  revalidatePath(`/session/${slot.sessionId}`);
   revalidatePath("/");
 }
+
+// ---------- Booking actions (unchanged behaviour) ----------
 
 export async function markPaidAction(formData: FormData): Promise<void> {
   await requireAdmin();
@@ -160,24 +201,36 @@ export async function markPaidAction(formData: FormData): Promise<void> {
   const paid = formData.get("paid") === "true";
   if (!id) return;
   await markPaid(id, paid);
-  revalidatePath("/admin");
+  const sessionIdHint = String(formData.get("sessionId") ?? "");
+  if (sessionIdHint) revalidatePath(`/admin/session/${sessionIdHint}`);
 }
 
 export async function adminCancelAction(formData: FormData): Promise<void> {
   await requireAdmin();
   const id = String(formData.get("id") ?? "");
   if (!id) return;
+  const booking = await prisma.booking.findUnique({
+    where: { id },
+    include: { slot: true },
+  });
   await adminCancelBooking(id);
-  revalidatePath("/admin");
+  if (booking) {
+    revalidatePath(`/admin/session/${booking.slot.sessionId}`);
+    revalidatePath(`/session/${booking.slot.sessionId}`);
+  }
   revalidatePath("/");
 }
+
+const walkinSchemaWithSlot = walkinBookingSchema.extend({
+  slotId: z.string().min(1, "Please choose a slot"),
+});
 
 export async function addWalkinAction(
   _prev: AdminActionResult | null,
   formData: FormData,
 ): Promise<AdminActionResult> {
   await requireAdmin();
-  const parsed = walkinBookingSchema.safeParse({
+  const parsed = walkinSchemaWithSlot.safeParse({
     slotId: formData.get("slotId"),
     name: formData.get("name"),
     whatsapp: formData.get("whatsapp"),
@@ -209,19 +262,11 @@ export async function addWalkinAction(
     if (result.error === "DUPLICATE") return { ok: false, error: "Duplicate booking." };
     return { ok: false, error: "Slot not found." };
   }
-  revalidatePath("/admin");
+  const slot = await prisma.slot.findUnique({ where: { id: parsed.data.slotId } });
+  if (slot) {
+    revalidatePath(`/admin/session/${slot.sessionId}`);
+    revalidatePath(`/session/${slot.sessionId}`);
+  }
   revalidatePath("/");
   return { ok: true, message: `Added (${result.status}).` };
-}
-
-export async function resetWeekAction(): Promise<void> {
-  await requireAdmin();
-  // Advance to the Saturday after the current trainingDate.
-  const settings = await getSettings();
-  const next = new Date(settings.trainingDate);
-  next.setUTCDate(next.getUTCDate() + 1);
-  const nextSat = nextSaturday(next);
-  await resetWeek(toISODate(nextSat));
-  revalidatePath("/admin");
-  revalidatePath("/");
 }

@@ -48,7 +48,7 @@ let cached: EmailProvider | null = null;
 export function getEmailProvider(): EmailProvider {
   if (cached) return cached;
   const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.EMAIL_FROM ?? "HYROX <bookings@example.com>";
+  const from = process.env.EMAIL_FROM ?? "Coach J <bookings@example.com>";
   cached = apiKey ? new ResendEmailProvider(apiKey, from) : new ConsoleEmailProvider();
   return cached;
 }
@@ -60,7 +60,7 @@ export function setEmailProvider(provider: EmailProvider | null): void {
 
 export async function sendPromotionEmail(to: string, slotTime: string, dateLabel: string) {
   const provider = getEmailProvider();
-  const subject = `You're confirmed for HYROX training (${dateLabel} ${slotTime})`;
+  const subject = `You're confirmed for training (${dateLabel} ${slotTime})`;
   const text = [
     `Good news — a spot opened up and you've been promoted from the waitlist.`,
     ``,

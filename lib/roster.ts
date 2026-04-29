@@ -29,6 +29,7 @@ export type SlotWithBookings = {
  * Format is intentionally exact — see tests/roster.test.ts for fixtures.
  */
 export function formatRoster(
+  sessionName: string,
   date: Date,
   location: string,
   coachFee: number,
@@ -36,7 +37,7 @@ export function formatRoster(
   slots: SlotWithBookings[],
 ): string {
   const header: string[] = [];
-  header.push(`*HYROX training on ${formatMonthDay(date)}*`);
+  header.push(`*${sessionName} training on ${formatMonthDay(date)}*`);
   header.push("");
   header.push(`**Location:** ${location}`);
   header.push("");
@@ -112,6 +113,7 @@ export function parseTimeLabel(label: string): { startMin: number; endMin: numbe
  *   Carol- $190
  */
 export function formatPaymentSummary(
+  sessionName: string,
   date: Date,
   coachFee: number,
   gymFee: number,
@@ -119,7 +121,7 @@ export function formatPaymentSummary(
 ): string {
   const base = coachFee + gymFee;
   const lines: string[] = [];
-  lines.push(`*HYROX training fee - ${formatMonthDay(date)}*`);
+  lines.push(`*${sessionName} training fee - ${formatMonthDay(date)}*`);
   lines.push("");
   lines.push(`Coach Training Fee - $${coachFee}`);
   lines.push(`Gym Fee - $${gymFee}`);
