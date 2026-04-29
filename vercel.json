@@ -1,5 +1,5 @@
 {
-  "buildCommand": "pnpm prisma generate && pnpm prisma migrate deploy && pnpm next build",
+  "buildCommand": "pnpm prisma generate && (pnpm prisma migrate resolve --rolled-back 20260429080000_multi_session || true) && pnpm prisma migrate deploy && pnpm next build",
   "installCommand": "pnpm install --frozen-lockfile",
   "framework": "nextjs"
 }
