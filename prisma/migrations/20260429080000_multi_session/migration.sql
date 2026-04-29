@@ -123,6 +123,34 @@ BEGIN
     END IF;
 END $$;
 
+-- Deduplicate slots that now collide on (sessionId, time). The pre-existing
+-- unique constraint was (date, time), so legacy data may contain multiple
+-- slots sharing the same time across different dates. After the backfill
+-- collapses them onto a single legacy Session, those rows would violate the
+-- new (sessionId, time) unique index. For each duplicate group we keep the
+-- earliest slot (smallest id) and re-point its siblings' bookings onto it
+-- before deleting the duplicates. This block is idempotent.
+DO $$
+DECLARE
+    r RECORD;
+BEGIN
+    FOR r IN
+        SELECT "sessionId", "time", MIN("id") AS keep_id, array_agg("id") AS all_ids
+        FROM "Slot"
+        WHERE "sessionId" IS NOT NULL
+        GROUP BY "sessionId", "time"
+        HAVING COUNT(*) > 1
+    LOOP
+        UPDATE "Booking"
+            SET "slotId" = r.keep_id
+            WHERE "slotId" = ANY(r.all_ids) AND "slotId" <> r.keep_id;
+        DELETE FROM "Slot"
+            WHERE "sessionId" = r."sessionId"
+              AND "time" = r."time"
+              AND "id" <> r.keep_id;
+    END LOOP;
+END $$;
+
 -- DropIndex (the old unique was (date, time); new unique is (sessionId, time))
 DROP INDEX IF EXISTS "Slot_date_time_key";
 
