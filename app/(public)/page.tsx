@@ -89,16 +89,26 @@ export default async function HomePage() {
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-4 py-8">
-      <header className="flex flex-col gap-2">
-        <p className="text-sm font-medium uppercase tracking-wider text-[var(--color-brand)]">
-          Coach J Bookings
-        </p>
-        <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
-          Upcoming sessions
-        </h1>
-        <p className="text-base text-[var(--color-muted-foreground)]">
-          Pick a session below to book your spot.
-        </p>
+      <header className="flex flex-col items-center gap-3 text-center sm:flex-row sm:items-center sm:gap-4 sm:text-left">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="https://github.com/user-attachments/assets/ad521e25-50f7-4cde-a660-775ff78e0b88"
+          alt="Coach J's Hyrox Training Club logo"
+          width={96}
+          height={96}
+          className="h-24 w-24 rounded-md object-contain"
+        />
+        <div className="flex flex-col gap-2">
+          <p className="text-sm font-medium uppercase tracking-wider text-[var(--color-brand)]">
+            Coach J&apos;s Hyrox Training Club
+          </p>
+          <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
+            Upcoming sessions
+          </h1>
+          <p className="text-base text-[var(--color-muted-foreground)]">
+            Pick a session below to book your spot.
+          </p>
+        </div>
       </header>
 
       <section>
@@ -146,6 +156,18 @@ export default async function HomePage() {
           </ul>
         )}
       </section>
+
+      <footer className="border-t border-[var(--color-border)] pt-6 text-sm text-[var(--color-muted-foreground)]">
+        <a
+          href="https://www.instagram.com/coachjunvie/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 underline-offset-4 hover:underline"
+        >
+          <span aria-hidden="true">📸</span>
+          Follow @coachjunvie on Instagram
+        </a>
+      </footer>
 
     </main>
   );

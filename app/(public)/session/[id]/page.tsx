@@ -81,13 +81,22 @@ export default async function SessionPage({ params }: { params: Params }) {
         )}
       </section>
 
-      <footer className="border-t border-[var(--color-border)] pt-6 text-sm">
+      <footer className="flex flex-col gap-2 border-t border-[var(--color-border)] pt-6 text-sm">
         <Link
           href={`/cancel?sessionId=${session.id}`}
           className="text-[var(--color-muted-foreground)] underline-offset-4 hover:underline"
         >
           Need to cancel a booking?
         </Link>
+        <a
+          href="https://www.instagram.com/coachjunvie/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 text-[var(--color-muted-foreground)] underline-offset-4 hover:underline"
+        >
+          <span aria-hidden="true">📸</span>
+          Follow @coachjunvie on Instagram
+        </a>
       </footer>
     </main>
   );
