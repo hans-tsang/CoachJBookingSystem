@@ -1,6 +1,6 @@
 import { type Prisma, type PrismaClient } from "@prisma/client";
 import { prisma } from "./db";
-import { sendPromotionEmail } from "./email";
+import { sendBookingConfirmationEmail, sendPromotionEmail } from "./email";
 import { formatMonthDay } from "./utils";
 import type { BookingStatus, PaymentMethod } from "./types";
 
@@ -23,8 +23,11 @@ export type CreateBookingResult =
   | { ok: false; error: "DUPLICATE" | "SLOT_NOT_FOUND" };
 
 export async function createBooking(args: CreateBookingArgs): Promise<CreateBookingResult> {
-  return prisma.$transaction(async (tx) => {
-    const slot = await tx.slot.findUnique({ where: { id: args.slotId } });
+  const result = await prisma.$transaction(async (tx) => {
+    const slot = await tx.slot.findUnique({
+      where: { id: args.slotId },
+      include: { session: true },
+    });
     if (!slot) return { ok: false, error: "SLOT_NOT_FOUND" } as const;
 
     // Duplicate detection: same slot + same digits-only whatsapp + case-insensitive name,
@@ -88,8 +91,43 @@ export async function createBooking(args: CreateBookingArgs): Promise<CreateBook
       },
     });
 
-    return { ok: true, status, bookingId: created.id, position } as const;
+    return {
+      ok: true as const,
+      status,
+      bookingId: created.id,
+      position,
+      email: created.email,
+      slotTime: slot.time,
+      slotDate: slot.date,
+      sessionName: slot.session.name,
+    };
   });
+
+  // Send confirmation email outside the DB transaction; failures must not roll
+  // back the booking. Only sends when the booker provided an email address.
+  if (result.ok && result.email) {
+    try {
+      const dateLabel = formatMonthDay(result.slotDate);
+      await sendBookingConfirmationEmail(
+        result.email,
+        result.status,
+        result.slotTime,
+        dateLabel,
+        result.sessionName,
+        result.status === "Waitlist" ? result.position : undefined,
+      );
+    } catch (err) {
+      console.error("Failed to send booking confirmation email", err);
+    }
+  }
+
+  if (!result.ok) return result;
+  return {
+    ok: true,
+    status: result.status,
+    bookingId: result.bookingId,
+    position: result.position,
+  };
 }
 
 export type CancelBookingArgs = {

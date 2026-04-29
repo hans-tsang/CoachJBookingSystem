@@ -58,6 +58,48 @@ export function setEmailProvider(provider: EmailProvider | null): void {
   cached = provider;
 }
 
+export async function sendBookingConfirmationEmail(
+  to: string,
+  status: "Confirmed" | "Waitlist",
+  slotTime: string,
+  dateLabel: string,
+  sessionName: string,
+  position?: number,
+) {
+  const provider = getEmailProvider();
+  const subject =
+    status === "Confirmed"
+      ? `Booking confirmed — ${sessionName} (${dateLabel} ${slotTime})`
+      : `You're on the waitlist — ${sessionName} (${dateLabel} ${slotTime})`;
+  const lines =
+    status === "Confirmed"
+      ? [
+          `Thanks for booking — your spot is confirmed.`,
+          ``,
+          `Session: ${sessionName}`,
+          `Date: ${dateLabel}`,
+          `Time: ${slotTime}`,
+          ``,
+          `If you can no longer attend, please cancel as early as possible so someone on the waitlist can take your place.`,
+          ``,
+          `See you there!`,
+          `— Coach J`,
+        ]
+      : [
+          `Thanks for signing up — the slot is currently full, so you've been added to the waitlist.`,
+          ``,
+          `Session: ${sessionName}`,
+          `Date: ${dateLabel}`,
+          `Time: ${slotTime}`,
+          ...(position ? [`Waitlist position: ${position}`] : []),
+          ``,
+          `If a spot opens up, you'll be promoted automatically and we'll send you another email.`,
+          ``,
+          `— Coach J`,
+        ];
+  return provider.send({ to, subject, text: lines.join("\n") });
+}
+
 export async function sendPromotionEmail(to: string, slotTime: string, dateLabel: string) {
   const provider = getEmailProvider();
   const subject = `You're confirmed for training (${dateLabel} ${slotTime})`;

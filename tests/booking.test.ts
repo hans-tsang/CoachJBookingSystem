@@ -224,8 +224,11 @@ describeIfDb("cancelBooking — waitlist promotion", () => {
     expect(bob?.status).toBe("Confirmed");
     expect(carol?.status).toBe("Waitlist");
 
-    expect(sentEmails.length).toBe(1);
-    expect(sentEmails[0].to).toBe("bob@example.com");
+    const promotionEmails = sentEmails.filter((m) =>
+      m.subject.startsWith("You're confirmed for training"),
+    );
+    expect(promotionEmails.length).toBe(1);
+    expect(promotionEmails[0].to).toBe("bob@example.com");
   });
 
   it("does not promote when a Waitlist booking cancels", async () => {
