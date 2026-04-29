@@ -7,6 +7,16 @@ export type RosterBooking = {
   createdAt: Date;
 };
 
+export type PaymentBooking = {
+  name: string;
+  uber: boolean;
+  paid: boolean;
+  /** Total amount the booking should pay (including Uber if applicable). May be null if not recorded. */
+  amount: number | null;
+  status: "Confirmed" | "Waitlist" | "Cancelled";
+  createdAt: Date;
+};
+
 export type SlotWithBookings = {
   time: string;
   capacity: number;
@@ -84,4 +94,53 @@ export function parseTimeLabel(label: string): { startMin: number; endMin: numbe
   const startMin = Number(match[1]) * 60 + Number(match[2]);
   const endMin = Number(match[3]) * 60 + Number(match[4]);
   return { startMin, endMin };
+}
+
+/**
+ * Produce the WhatsApp payment-summary text that Coach J pastes into the group chat
+ * to chase fees. Confirmed bookings only, ordered by createdAt ASC. A ✅ is appended
+ * to the names of bookings that have been marked paid.
+ *
+ * Format example:
+ *   *HYROX training fee - Apr 25*
+ *
+ *   Coach Training Fee - $150
+ *   Gym Fee - $40
+ *
+ *   Alice- $190✅
+ *   Bob- $190+Uber $42 =$232✅
+ *   Carol- $190
+ */
+export function formatPaymentSummary(
+  date: Date,
+  coachFee: number,
+  gymFee: number,
+  bookings: PaymentBooking[],
+): string {
+  const base = coachFee + gymFee;
+  const lines: string[] = [];
+  lines.push(`*HYROX training fee - ${formatMonthDay(date)}*`);
+  lines.push("");
+  lines.push(`Coach Training Fee - $${coachFee}`);
+  lines.push(`Gym Fee - $${gymFee}`);
+  lines.push("");
+
+  const confirmed = bookings
+    .filter((b) => b.status === "Confirmed")
+    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+
+  for (const b of confirmed) {
+    const tick = b.paid ? "✅" : "";
+    // If we recorded a custom amount above the base and the booking has Uber,
+    // surface the breakdown. Otherwise just show the base.
+    const total = typeof b.amount === "number" && b.amount > 0 ? b.amount : base;
+    if (b.uber && total > base) {
+      const uberPortion = total - base;
+      lines.push(`${b.name}- $${base}+Uber $${uberPortion} =$${total}${tick}`);
+    } else {
+      lines.push(`${b.name}- $${total}${tick}`);
+    }
+  }
+
+  return lines.join("\n");
 }

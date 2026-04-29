@@ -9,6 +9,7 @@ import { Tabs } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/toast";
 import { RosterView } from "./roster-view";
 import { BookingsTable, type AdminBookingRow } from "./bookings-table";
+import { PaymentSummaryView } from "./payment-summary-view";
 import {
   updateSettingsAction,
   changePasswordAction,
@@ -28,6 +29,7 @@ export type AdminSlot = {
 
 export type AdminDashboardProps = {
   rosterText: string;
+  paymentSummaryText: string;
   bookings: AdminBookingRow[];
   slots: AdminSlot[];
   settings: {
@@ -363,7 +365,13 @@ export function AdminDashboard(props: AdminDashboardProps) {
       >
         {(active) => {
           if (active === "roster") return <RosterView rosterText={props.rosterText} />;
-          if (active === "bookings") return <BookingsTable rows={props.bookings} />;
+          if (active === "bookings")
+            return (
+              <div className="flex flex-col gap-4">
+                <PaymentSummaryView paymentSummaryText={props.paymentSummaryText} />
+                <BookingsTable rows={props.bookings} />
+              </div>
+            );
           if (active === "slots")
             return <SlotsTab slots={props.slots} trainingDate={props.settings.trainingDate} />;
           if (active === "settings") return <SettingsTab settings={props.settings} />;
