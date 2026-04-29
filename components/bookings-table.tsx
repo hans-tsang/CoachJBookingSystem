@@ -147,6 +147,7 @@ export function BookingsTable({
             <TH>{headerBtn("slotTime", "Slot")}</TH>
             <TH>{headerBtn("name", "Name")}</TH>
             <TH>WhatsApp</TH>
+            <TH>Email</TH>
             <TH>{headerBtn("status", "Status")}</TH>
             <TH>{headerBtn("paid", "Paid")}</TH>
             <TH>Payment</TH>
@@ -160,6 +161,7 @@ export function BookingsTable({
               <TD className="font-mono text-xs">{r.slotTime}</TD>
               <TD className="font-medium">{r.name}</TD>
               <TD className="font-mono text-xs">{r.whatsapp}</TD>
+              <TD className="text-xs">{r.email ?? "—"}</TD>
               <TD>
                 <span
                   className={
