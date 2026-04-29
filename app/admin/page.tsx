@@ -4,7 +4,7 @@ import { isAuthenticated } from "@/lib/auth";
 import { getAllSessions } from "@/lib/session";
 import { effectiveCloseAt, getBookingsGateState } from "@/lib/settings";
 import { formatMonthDay } from "@/lib/utils";
-import { archiveSessionAction, logoutAction } from "./actions";
+import { archiveSessionAction, unarchiveSessionAction, logoutAction } from "./actions";
 import { Button } from "@/components/ui/button";
 
 export const dynamic = "force-dynamic";
@@ -84,7 +84,14 @@ export default async function AdminPage() {
                         Archive
                       </Button>
                     </form>
-                  ) : null}
+                  ) : (
+                    <form action={unarchiveSessionAction}>
+                      <input type="hidden" name="id" value={s.id} />
+                      <Button type="submit" variant="ghost" size="sm">
+                        Reopen
+                      </Button>
+                    </form>
+                  )}
                 </div>
               </li>
             );
