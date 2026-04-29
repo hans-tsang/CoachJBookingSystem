@@ -23,17 +23,26 @@ export type AdminBookingRow = {
 
 type SortKey = "createdAt" | "name" | "slotTime" | "status" | "paid";
 
-function PaidToggle({ id, paid }: { id: string; paid: boolean }) {
+function PaidToggle({
+  id,
+  paid,
+  setOptimisticPaid,
+}: {
+  id: string;
+  paid: boolean;
+  setOptimisticPaid: (update: { id: string; paid: boolean }) => void;
+}) {
   // Optimistic UI: flip immediately, revert on error. Works around the perception
-  // that the underlying server action ("mark paid") feels unresponsive.
-  const [optimisticPaid, setOptimisticPaid] = React.useOptimistic(paid);
+  // that the underlying server action ("mark paid") feels unresponsive. The
+  // optimistic state is owned by the parent (AdminDashboard) so that the
+  // payment summary panel can refresh in real time off the same source of truth.
   const [isPending, startTransition] = React.useTransition();
   const { toast } = useToast();
 
   const onClick = () => {
-    const next = !optimisticPaid;
+    const next = !paid;
     startTransition(async () => {
-      setOptimisticPaid(next);
+      setOptimisticPaid({ id, paid: next });
       try {
         const fd = new FormData();
         fd.set("id", id);
@@ -55,16 +64,22 @@ function PaidToggle({ id, paid }: { id: string; paid: boolean }) {
       type="button"
       onClick={onClick}
       disabled={isPending}
-      aria-pressed={optimisticPaid}
-      aria-label={optimisticPaid ? "Mark unpaid" : "Mark paid"}
+      aria-pressed={paid}
+      aria-label={paid ? "Mark unpaid" : "Mark paid"}
       className="focus-ring inline-flex h-5 w-5 items-center justify-center rounded border border-[var(--color-border)] disabled:opacity-50"
     >
-      {optimisticPaid ? "✓" : ""}
+      {paid ? "✓" : ""}
     </button>
   );
 }
 
-export function BookingsTable({ rows }: { rows: AdminBookingRow[] }) {
+export function BookingsTable({
+  rows,
+  setOptimisticPaid,
+}: {
+  rows: AdminBookingRow[];
+  setOptimisticPaid: (update: { id: string; paid: boolean }) => void;
+}) {
   const [sortKey, setSortKey] = React.useState<SortKey>("createdAt");
   const [sortDir, setSortDir] = React.useState<"asc" | "desc">("asc");
   const [filter, setFilter] = React.useState("");
@@ -159,7 +174,7 @@ export function BookingsTable({ rows }: { rows: AdminBookingRow[] }) {
                 </span>
               </TD>
               <TD>
-                <PaidToggle id={r.id} paid={r.paid} />
+                <PaidToggle id={r.id} paid={r.paid} setOptimisticPaid={setOptimisticPaid} />
               </TD>
               <TD className="text-xs">{r.payment}</TD>
               <TD className="text-xs">{r.uber ? "Yes" : "—"}</TD>

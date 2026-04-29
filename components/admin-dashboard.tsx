@@ -29,7 +29,6 @@ export type AdminSlot = {
 
 export type AdminDashboardProps = {
   rosterText: string;
-  paymentSummaryText: string;
   bookings: AdminBookingRow[];
   slots: AdminSlot[];
   settings: {
@@ -317,6 +316,13 @@ function SlotsTab({
 
 export function AdminDashboard(props: AdminDashboardProps) {
   const { toast } = useToast();
+  // Shared optimistic view of bookings so the Paid toggle in the table and the
+  // Payment summary panel update from a single source of truth in real time.
+  const [optimisticBookings, applyOptimisticPaid] = React.useOptimistic(
+    props.bookings,
+    (state, update: { id: string; paid: boolean }) =>
+      state.map((b) => (b.id === update.id ? { ...b, paid: update.paid } : b)),
+  );
   const onResetWeek = async () => {
     if (
       !confirm(
@@ -368,8 +374,16 @@ export function AdminDashboard(props: AdminDashboardProps) {
           if (active === "bookings")
             return (
               <div className="flex flex-col gap-4">
-                <PaymentSummaryView paymentSummaryText={props.paymentSummaryText} />
-                <BookingsTable rows={props.bookings} />
+                <PaymentSummaryView
+                  bookings={optimisticBookings}
+                  coachFee={props.settings.coachFee}
+                  gymFee={props.settings.gymFee}
+                  trainingDate={props.settings.trainingDate}
+                />
+                <BookingsTable
+                  rows={optimisticBookings}
+                  setOptimisticPaid={applyOptimisticPaid}
+                />
               </div>
             );
           if (active === "slots")
