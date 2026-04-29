@@ -147,14 +147,6 @@ export default async function HomePage() {
         )}
       </section>
 
-      <footer className="border-t border-[var(--color-border)] pt-6 text-sm">
-        <Link
-          href="/cancel"
-          className="text-[var(--color-muted-foreground)] underline-offset-4 hover:underline"
-        >
-          Need to cancel a booking?
-        </Link>
-      </footer>
     </main>
   );
 }
