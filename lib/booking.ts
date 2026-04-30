@@ -1,6 +1,6 @@
 import { type Prisma, type PrismaClient } from "@prisma/client";
 import { prisma } from "./db";
-import { sendBookingConfirmationEmail, sendPromotionEmail } from "./email";
+import { sendBookingConfirmationEmail, sendCancellationEmail, sendPromotionEmail } from "./email";
 import { formatMonthDay } from "./utils";
 import type { BookingStatus, PaymentMethod } from "./types";
 
@@ -139,6 +139,7 @@ export type CancelBookingResult =
   | {
       ok: true;
       cancelledStatus: BookingStatus;
+      cancelledEmail: string | null;
       promoted: { bookingId: string; name: string; email: string | null; slotTime: string } | null;
       slotTime: string;
       slotDate: Date;
@@ -229,6 +230,7 @@ export async function cancelBooking(args: CancelBookingArgs): Promise<CancelBook
     return {
       ok: true as const,
       cancelledStatus: match.status as BookingStatus,
+      cancelledEmail: match.email,
       promoted,
       slotTime: match.slot.time,
       slotDate: match.slot.date,
@@ -236,14 +238,31 @@ export async function cancelBooking(args: CancelBookingArgs): Promise<CancelBook
     };
   });
 
-  // Send promotion email outside the DB transaction; failures must not roll back the cancel.
-  if (result.ok && result.promoted && result.promoted.email) {
-    try {
-      const dateLabel = formatMonthDay(result.slotDate);
-      await sendPromotionEmail(result.promoted.email, result.promoted.slotTime, dateLabel, result.sessionName);
-    } catch (err) {
-       
-      console.error("Failed to send promotion email", err);
+  // Send emails outside the DB transaction; failures must not roll back the cancel.
+  if (result.ok) {
+    if (result.cancelledEmail) {
+      try {
+        const dateLabel = formatMonthDay(result.slotDate);
+        await sendCancellationEmail(
+          result.cancelledEmail,
+          result.slotTime,
+          dateLabel,
+          result.sessionName,
+          false,
+        );
+      } catch (err) {
+         
+        console.error("Failed to send cancellation email", err);
+      }
+    }
+    if (result.promoted && result.promoted.email) {
+      try {
+        const dateLabel = formatMonthDay(result.slotDate);
+        await sendPromotionEmail(result.promoted.email, result.promoted.slotTime, dateLabel, result.sessionName);
+      } catch (err) {
+         
+        console.error("Failed to send promotion email", err);
+      }
     }
   }
 
@@ -283,9 +302,19 @@ export async function markPaid(bookingId: string, paid: boolean): Promise<void> 
 /** Admin-initiated cancel (no name/whatsapp match). Promotes waitlist if needed. */
 export async function adminCancelBooking(bookingId: string): Promise<void> {
   let promotedId: string | null = null;
+  type CancelledInfo = {
+    email: string;
+    slotTime: string;
+    slotDate: Date;
+    sessionName: string;
+  };
+  let cancelledInfo: CancelledInfo | null = null;
 
   await prisma.$transaction(async (tx) => {
-    const booking = await tx.booking.findUnique({ where: { id: bookingId } });
+    const booking = await tx.booking.findUnique({
+      where: { id: bookingId },
+      include: { slot: { include: { session: true } } },
+    });
     if (!booking || booking.status === "Cancelled") return;
     const wasConfirmed = booking.status === "Confirmed";
     await tx.booking.update({ where: { id: bookingId }, data: { status: "Cancelled" } });
@@ -295,11 +324,39 @@ export async function adminCancelBooking(bookingId: string): Promise<void> {
         payload: JSON.stringify({ bookingId, slotId: booking.slotId, by: "admin" }),
       },
     });
+    if (booking.email) {
+      cancelledInfo = {
+        email: booking.email,
+        slotTime: booking.slot.time,
+        slotDate: booking.slot.date,
+        sessionName: booking.slot.session.name,
+      };
+    }
     if (wasConfirmed) {
       const result = await promoteWaitlist(booking.slotId, tx);
       promotedId = result.promotedId;
     }
   });
+
+  // Send cancellation email to the cancelled user outside the DB transaction;
+  // failures must not roll back the cancel.
+  // The transaction has fully run by here; TS cannot narrow values written
+  // inside the closure, so use an explicit non-null check + locals.
+  if (cancelledInfo !== null) {
+    const info: CancelledInfo = cancelledInfo;
+    try {
+      const dateLabel = formatMonthDay(info.slotDate);
+      await sendCancellationEmail(
+        info.email,
+        info.slotTime,
+        dateLabel,
+        info.sessionName,
+        true,
+      );
+    } catch (err) {
+      console.error("Failed to send cancellation email after admin cancel", err);
+    }
+  }
 
   // Send promotion email outside the DB transaction; failures must not roll back the cancel.
   if (promotedId) {

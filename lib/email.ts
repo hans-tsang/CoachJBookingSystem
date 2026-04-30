@@ -96,7 +96,8 @@ function emailShell(title: string, bannerColor: string, bannerContent: string, b
         </tr>
         <tr>
           <td style="padding:16px 32px 28px;border-top:1px solid #e4e4e7;text-align:center;">
-            <p style="margin:0;color:#a1a1aa;font-size:13px;">— Coach J</p>
+            <p style="margin:0 0 6px;color:#a1a1aa;font-size:13px;">— Coach J</p>
+            <p style="margin:0;color:#a1a1aa;font-size:12px;">Please do not reply to this email.</p>
           </td>
         </tr>
       </table>
@@ -164,6 +165,24 @@ function buildBookingConfirmationHtml(
   }
 }
 
+function buildCancellationHtml(
+  sessionName: string,
+  dateLabel: string,
+  slotTime: string,
+  byAdmin: boolean,
+): string {
+  const banner = `<span style="color:#ffffff;font-size:22px;font-weight:700;">👋 Sorry to see you go</span>`;
+  const intro = byAdmin
+    ? `Your booking has been cancelled by admin. Please do not reply to this email.`
+    : `Your booking has been cancelled. Sorry to see you go — hope to see you again at a future session! Please do not reply to this email.`;
+  const body = `
+    <p style="margin:0;color:#3f3f46;font-size:15px;line-height:1.6;">
+      ${intro}
+    </p>
+    ${sessionDetailsCard(sessionName, dateLabel, slotTime)}`;
+  return emailShell("Booking cancelled", "#ef4444", banner, body);
+}
+
 function buildPromotionHtml(sessionName: string, dateLabel: string, slotTime: string): string {
   const banner = `<span style="color:#ffffff;font-size:22px;font-weight:700;">🎉 You're in — spot confirmed!</span>`;
   const body = `
@@ -202,6 +221,8 @@ export async function sendBookingConfirmationEmail(
           ``,
           `See you there!`,
           `— Coach J`,
+          ``,
+          `Please do not reply to this email.`,
         ]
       : [
           `Thanks for signing up — the slot is currently full, so you've been added to the waitlist.`,
@@ -214,6 +235,8 @@ export async function sendBookingConfirmationEmail(
           `If a spot opens up, you'll be promoted automatically and we'll send you another email.`,
           ``,
           `— Coach J`,
+          ``,
+          `Please do not reply to this email.`,
         ];
   const html = buildBookingConfirmationHtml(status, sessionName, dateLabel, slotTime, position);
   return provider.send({ to, subject, text: lines.join("\n"), html });
@@ -236,7 +259,45 @@ export async function sendPromotionEmail(
     ``,
     `See you there!`,
     `— Coach J`,
+    ``,
+    `Please do not reply to this email.`,
   ].join("\n");
   const html = buildPromotionHtml(sessionName, dateLabel, slotTime);
   return provider.send({ to, subject, text, html });
+}
+
+export async function sendCancellationEmail(
+  to: string,
+  slotTime: string,
+  dateLabel: string,
+  sessionName: string,
+  byAdmin: boolean,
+) {
+  const provider = getEmailProvider();
+  const subject = `Booking cancelled — ${sessionName} (${dateLabel} ${slotTime})`;
+  const lines = byAdmin
+    ? [
+        `Your booking has been cancelled by admin.`,
+        ``,
+        `Session: ${sessionName}`,
+        `Date: ${dateLabel}`,
+        `Time: ${slotTime}`,
+        ``,
+        `— Coach J`,
+        ``,
+        `Please do not reply to this email.`,
+      ]
+    : [
+        `Your booking has been cancelled. Sorry to see you go — hope to see you again at a future session!`,
+        ``,
+        `Session: ${sessionName}`,
+        `Date: ${dateLabel}`,
+        `Time: ${slotTime}`,
+        ``,
+        `— Coach J`,
+        ``,
+        `Please do not reply to this email.`,
+      ];
+  const html = buildCancellationHtml(sessionName, dateLabel, slotTime, byAdmin);
+  return provider.send({ to, subject, text: lines.join("\n"), html });
 }
