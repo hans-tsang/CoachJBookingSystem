@@ -1,4 +1,10 @@
 import nodemailer, { type Transporter } from "nodemailer";
+import {
+  buildGoogleCalendarUrl,
+  buildIcsDownloadUrl,
+  buildOutlookCalendarUrl,
+  type CalendarEvent,
+} from "./calendar";
 
 export type EmailMessage = {
   to: string;
@@ -135,12 +141,66 @@ function sessionDetailsCard(sessionName: string, dateLabel: string, slotTime: st
     </table>`;
 }
 
+/**
+ * Resolve the public base URL used to build absolute add-to-calendar links
+ * (specifically the Apple `.ics` download endpoint). Falls back to Vercel's
+ * deployment URL, then null when neither is configured — in which case the
+ * calendar buttons are omitted entirely.
+ */
+function getPublicBaseUrl(): string | null {
+  const explicit = process.env.PUBLIC_BASE_URL;
+  if (explicit && explicit.length > 0) return explicit;
+  const vercel = process.env.VERCEL_URL;
+  if (vercel && vercel.length > 0) return `https://${vercel}`;
+  return null;
+}
+
+/**
+ * HTML block matching the "add to calendar | Apple · Google · Outlook" row in
+ * the issue's reference email. Returns an empty string when no calendar event
+ * is supplied or no public base URL is configured (Apple link needs an
+ * absolute URL to our `.ics` endpoint).
+ */
+function calendarButtonsHtmlBlock(event: CalendarEvent | null): string {
+  if (!event) return "";
+  const baseUrl = getPublicBaseUrl();
+  if (!baseUrl) return "";
+  const apple = buildIcsDownloadUrl(baseUrl, event);
+  const google = buildGoogleCalendarUrl(event);
+  const outlook = buildOutlookCalendarUrl(event);
+  const linkStyle =
+    "display:inline-block;padding:0 14px;color:#2563eb;font-size:14px;font-weight:600;text-decoration:none;";
+  const sepStyle = "color:#d4d4d8;";
+  return `
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin-top:20px;">
+      <tr><td align="center" style="padding:6px 0 10px;color:#71717a;font-size:13px;">add to calendar</td></tr>
+      <tr><td align="center">
+        <a href="${apple}" style="${linkStyle}">Apple</a><span style="${sepStyle}">·</span><a href="${google}" style="${linkStyle}">Google</a><span style="${sepStyle}">·</span><a href="${outlook}" style="${linkStyle}">Outlook</a>
+      </td></tr>
+    </table>`;
+}
+
+/** Plain-text counterpart of `calendarButtonsHtmlBlock` for the text body. */
+function calendarLinksTextLines(event: CalendarEvent | null): string[] {
+  if (!event) return [];
+  const baseUrl = getPublicBaseUrl();
+  if (!baseUrl) return [];
+  return [
+    ``,
+    `Add to calendar:`,
+    `  Apple:   ${buildIcsDownloadUrl(baseUrl, event)}`,
+    `  Google:  ${buildGoogleCalendarUrl(event)}`,
+    `  Outlook: ${buildOutlookCalendarUrl(event)}`,
+  ];
+}
+
 function buildBookingConfirmationHtml(
   status: "Confirmed" | "Waitlist",
   sessionName: string,
   dateLabel: string,
   slotTime: string,
   position?: number,
+  calendarEvent?: CalendarEvent | null,
 ): string {
   if (status === "Confirmed") {
     const banner = `<span style="color:#ffffff;font-size:22px;font-weight:700;">✓ You're confirmed!</span>`;
@@ -148,7 +208,8 @@ function buildBookingConfirmationHtml(
       <p style="margin:0;color:#3f3f46;font-size:15px;line-height:1.6;">
         Your spot is confirmed. If you can no longer attend, please cancel as early as possible so someone on the waitlist can take your place.
       </p>
-      ${sessionDetailsCard(sessionName, dateLabel, slotTime)}`;
+      ${sessionDetailsCard(sessionName, dateLabel, slotTime)}
+      ${calendarButtonsHtmlBlock(calendarEvent ?? null)}`;
     return emailShell("Booking confirmed", "#22c55e", banner, body);
   } else {
     const positionNote = position
@@ -183,13 +244,19 @@ function buildCancellationHtml(
   return emailShell("Booking cancelled", "#ef4444", banner, body);
 }
 
-function buildPromotionHtml(sessionName: string, dateLabel: string, slotTime: string): string {
+function buildPromotionHtml(
+  sessionName: string,
+  dateLabel: string,
+  slotTime: string,
+  calendarEvent?: CalendarEvent | null,
+): string {
   const banner = `<span style="color:#ffffff;font-size:22px;font-weight:700;">🎉 You're in — spot confirmed!</span>`;
   const body = `
     <p style="margin:0;color:#3f3f46;font-size:15px;line-height:1.6;">
       Great news — a spot opened up and you've been moved from the waitlist. Your place is now confirmed!
     </p>
-    ${sessionDetailsCard(sessionName, dateLabel, slotTime)}`;
+    ${sessionDetailsCard(sessionName, dateLabel, slotTime)}
+    ${calendarButtonsHtmlBlock(calendarEvent ?? null)}`;
   return emailShell("You're in — spot confirmed!", "#0ea5e9", banner, body);
 }
 
@@ -202,12 +269,16 @@ export async function sendBookingConfirmationEmail(
   dateLabel: string,
   sessionName: string,
   position?: number,
+  calendarEvent?: CalendarEvent | null,
 ) {
   const provider = getEmailProvider();
   const subject =
     status === "Confirmed"
       ? `Booking confirmed — ${sessionName} (${dateLabel} ${slotTime})`
       : `You're on the waitlist — ${sessionName} (${dateLabel} ${slotTime})`;
+  // Calendar links only make sense for confirmed bookings — waitlisted users
+  // don't have a guaranteed event yet, so we skip add-to-calendar there.
+  const eventForLinks = status === "Confirmed" ? calendarEvent ?? null : null;
   const lines =
     status === "Confirmed"
       ? [
@@ -216,6 +287,7 @@ export async function sendBookingConfirmationEmail(
           `Session: ${sessionName}`,
           `Date: ${dateLabel}`,
           `Time: ${slotTime}`,
+          ...calendarLinksTextLines(eventForLinks),
           ``,
           `If you can no longer attend, please cancel as early as possible so someone on the waitlist can take your place.`,
           ``,
@@ -238,7 +310,7 @@ export async function sendBookingConfirmationEmail(
           ``,
           `Please do not reply to this email.`,
         ];
-  const html = buildBookingConfirmationHtml(status, sessionName, dateLabel, slotTime, position);
+  const html = buildBookingConfirmationHtml(status, sessionName, dateLabel, slotTime, position, eventForLinks);
   return provider.send({ to, subject, text: lines.join("\n"), html });
 }
 
@@ -247,6 +319,7 @@ export async function sendPromotionEmail(
   slotTime: string,
   dateLabel: string,
   sessionName: string,
+  calendarEvent?: CalendarEvent | null,
 ) {
   const provider = getEmailProvider();
   const subject = `You're in — spot confirmed! ${sessionName} (${dateLabel} ${slotTime})`;
@@ -256,13 +329,14 @@ export async function sendPromotionEmail(
     `Session: ${sessionName}`,
     `Date: ${dateLabel}`,
     `Time: ${slotTime}`,
+    ...calendarLinksTextLines(calendarEvent ?? null),
     ``,
     `See you there!`,
     `— Coach J`,
     ``,
     `Please do not reply to this email.`,
   ].join("\n");
-  const html = buildPromotionHtml(sessionName, dateLabel, slotTime);
+  const html = buildPromotionHtml(sessionName, dateLabel, slotTime, calendarEvent ?? null);
   return provider.send({ to, subject, text, html });
 }
 
