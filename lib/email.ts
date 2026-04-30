@@ -1,4 +1,4 @@
-import { Resend } from "resend";
+import nodemailer, { type Transporter } from "nodemailer";
 
 export type EmailMessage = {
   to: string;
@@ -19,27 +19,27 @@ class ConsoleEmailProvider implements EmailProvider {
   }
 }
 
-class ResendEmailProvider implements EmailProvider {
-  private client: Resend;
+class GmailEmailProvider implements EmailProvider {
+  private transporter: Transporter;
   private from: string;
 
-  constructor(apiKey: string, from: string) {
-    this.client = new Resend(apiKey);
+  constructor(user: string, appPassword: string, from: string) {
+    this.transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: { user, pass: appPassword },
+    });
     this.from = from;
   }
 
   async send(message: EmailMessage): Promise<{ id?: string }> {
-    const result = await this.client.emails.send({
+    const result = await this.transporter.sendMail({
       from: this.from,
       to: message.to,
       subject: message.subject,
       text: message.text,
       html: message.html,
     });
-    if (result.error) {
-      throw new Error(`Resend error: ${result.error.message}`);
-    }
-    return { id: result.data?.id };
+    return { id: result.messageId };
   }
 }
 
@@ -47,9 +47,16 @@ let cached: EmailProvider | null = null;
 
 export function getEmailProvider(): EmailProvider {
   if (cached) return cached;
-  const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.EMAIL_FROM ?? "Coach J <bookings@example.com>";
-  cached = apiKey ? new ResendEmailProvider(apiKey, from) : new ConsoleEmailProvider();
+  // Env var names match what's configured in Vercel: `gmail` (login) and
+  // `apppassword` (Google App Password). Uppercase fallbacks are accepted
+  // for local dev convenience.
+  const user = process.env.gmail ?? process.env.GMAIL_USER;
+  const appPassword = process.env.apppassword ?? process.env.GMAIL_APP_PASSWORD;
+  const from = process.env.EMAIL_FROM ?? (user ? `Coach J <${user}>` : "Coach J <bookings@example.com>");
+  cached =
+    user && appPassword
+      ? new GmailEmailProvider(user, appPassword, from)
+      : new ConsoleEmailProvider();
   return cached;
 }
 
