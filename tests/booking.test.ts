@@ -147,7 +147,7 @@ describeIfDb("createBooking — capacity math", () => {
     }
   });
 
-  it("rejects duplicate (same name + whatsapp) in same slot", async () => {
+  it("rejects duplicate whatsapp in same slot", async () => {
     const slot = await makeSlot(5);
     const { createBooking } = await getBookingLib();
     await createBooking({
@@ -166,6 +166,91 @@ describeIfDb("createBooking — capacity math", () => {
     });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toBe("DUPLICATE");
+  });
+
+  it("rejects same whatsapp booking a different slot in the same session", async () => {
+    const session = await makeSession();
+    const slotA = await prisma.slot.create({
+      data: { sessionId: session.id, date: session.date, time: "09:00-10:30", capacity: 5, order: 1 },
+    });
+    const slotB = await prisma.slot.create({
+      data: { sessionId: session.id, date: session.date, time: "11:00-12:30", capacity: 5, order: 2 },
+    });
+    const { createBooking } = await getBookingLib();
+    const r1 = await createBooking({
+      slotId: slotA.id,
+      name: "Alice",
+      whatsapp: "85291112222",
+      uber: false,
+      payment: "PayMe",
+    });
+    expect(r1.ok).toBe(true);
+    // Same whatsapp, different name, different slot in the same session → rejected.
+    const r2 = await createBooking({
+      slotId: slotB.id,
+      name: "Alice's Friend",
+      whatsapp: "85291112222",
+      uber: false,
+      payment: "PayMe",
+    });
+    expect(r2.ok).toBe(false);
+    if (!r2.ok) expect(r2.error).toBe("DUPLICATE");
+  });
+
+  it("allows the same whatsapp to book slots in different sessions", async () => {
+    const sessionA = await makeSession({ name: "Session A" });
+    const sessionB = await makeSession({ name: "Session B" });
+    const slotA = await makeSlot(2, sessionA.id);
+    const slotB = await makeSlot(2, sessionB.id);
+    const { createBooking } = await getBookingLib();
+    const r1 = await createBooking({
+      slotId: slotA.id,
+      name: "Alice",
+      whatsapp: "85291112222",
+      uber: false,
+      payment: "PayMe",
+    });
+    const r2 = await createBooking({
+      slotId: slotB.id,
+      name: "Alice",
+      whatsapp: "85291112222",
+      uber: false,
+      payment: "PayMe",
+    });
+    expect(r1.ok).toBe(true);
+    expect(r2.ok).toBe(true);
+  });
+
+  it("allows rebooking a different slot in the same session after cancelling", async () => {
+    const session = await makeSession();
+    const slotA = await prisma.slot.create({
+      data: { sessionId: session.id, date: session.date, time: "09:00-10:30", capacity: 5, order: 1 },
+    });
+    const slotB = await prisma.slot.create({
+      data: { sessionId: session.id, date: session.date, time: "11:00-12:30", capacity: 5, order: 2 },
+    });
+    const { createBooking, cancelBooking } = await getBookingLib();
+    await createBooking({
+      slotId: slotA.id,
+      name: "Alice",
+      whatsapp: "85291112222",
+      uber: false,
+      payment: "PayMe",
+    });
+    const cancelled = await cancelBooking({
+      name: "Alice",
+      whatsapp: "85291112222",
+      sessionId: session.id,
+    });
+    expect(cancelled.ok).toBe(true);
+    const r = await createBooking({
+      slotId: slotB.id,
+      name: "Alice",
+      whatsapp: "85291112222",
+      uber: false,
+      payment: "PayMe",
+    });
+    expect(r.ok).toBe(true);
   });
 
   it("returns SLOT_NOT_FOUND for unknown slot", async () => {
