@@ -7,6 +7,8 @@ import type { BookingStatus, PaymentMethod } from "./types";
 
 type Tx = Prisma.TransactionClient | PrismaClient;
 
+const COACH_NAME = "Coach Junvie";
+
 /**
  * Build the CalendarEvent passed to confirmation/promotion emails. Returns
  * null when the slot's time string can't be parsed — in that case the email
@@ -21,8 +23,8 @@ function buildSlotCalendarEvent(args: {
   const instants = getEventInstants(args.slotDate, args.slotTime);
   if (!instants) return null;
   return {
-    title: args.sessionName,
-    description: `${args.sessionName} at ${args.location}`,
+    title: `${args.sessionName} with ${COACH_NAME}`,
+    description: `${args.sessionName} with ${COACH_NAME} at ${args.location}`,
     location: args.location,
     start: instants.start,
     end: instants.end,
