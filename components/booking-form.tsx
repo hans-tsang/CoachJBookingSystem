@@ -116,7 +116,7 @@ export function BookingForm({ slots }: { slots: SlotCardData[] }) {
               name="uber"
               className="h-4 w-4 rounded border-[var(--color-border)]"
             />
-            Need an Uber from MTR?
+            Need an Uber?
           </label>
         </div>
       </div>
