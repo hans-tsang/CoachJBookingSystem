@@ -23,6 +23,18 @@ export type AdminBookingRow = {
 
 type SortKey = "createdAt" | "name" | "slotTime" | "status" | "paid";
 
+function formatCreatedAt(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function PaidToggle({
   id,
   paid,
@@ -152,6 +164,7 @@ export function BookingsTable({
             <TH>{headerBtn("paid", "Paid")}</TH>
             <TH>Payment</TH>
             <TH>Uber</TH>
+            <TH>{headerBtn("createdAt", "Created")}</TH>
             <TH className="text-right">Actions</TH>
           </TR>
         </THead>
@@ -180,6 +193,9 @@ export function BookingsTable({
               </TD>
               <TD className="text-xs">{r.payment}</TD>
               <TD className="text-xs">{r.uber ? "Yes" : "—"}</TD>
+              <TD className="whitespace-nowrap text-xs">
+                <time dateTime={r.createdAt}>{formatCreatedAt(r.createdAt)}</time>
+              </TD>
               <TD className="text-right">
                 {r.status !== "Cancelled" ? (
                   <form action={adminCancelAction} className="inline">
