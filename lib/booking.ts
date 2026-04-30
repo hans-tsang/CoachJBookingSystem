@@ -1,10 +1,33 @@
 import { type Prisma, type PrismaClient } from "@prisma/client";
 import { prisma } from "./db";
 import { sendBookingConfirmationEmail, sendCancellationEmail, sendPromotionEmail } from "./email";
+import { getEventInstants, type CalendarEvent } from "./calendar";
 import { formatMonthDay } from "./utils";
 import type { BookingStatus, PaymentMethod } from "./types";
 
 type Tx = Prisma.TransactionClient | PrismaClient;
+
+/**
+ * Build the CalendarEvent passed to confirmation/promotion emails. Returns
+ * null when the slot's time string can't be parsed — in that case the email
+ * is still sent but without add-to-calendar links.
+ */
+function buildSlotCalendarEvent(args: {
+  sessionName: string;
+  location: string;
+  slotDate: Date;
+  slotTime: string;
+}): CalendarEvent | null {
+  const instants = getEventInstants(args.slotDate, args.slotTime);
+  if (!instants) return null;
+  return {
+    title: args.sessionName,
+    description: `${args.sessionName} at ${args.location}`,
+    location: args.location,
+    start: instants.start,
+    end: instants.end,
+  };
+}
 
 export type CreateBookingArgs = {
   slotId: string;
@@ -99,6 +122,7 @@ export async function createBooking(args: CreateBookingArgs): Promise<CreateBook
       slotTime: slot.time,
       slotDate: slot.date,
       sessionName: slot.session.name,
+      location: slot.session.location,
     };
   });
 
@@ -107,6 +131,15 @@ export async function createBooking(args: CreateBookingArgs): Promise<CreateBook
   if (result.ok && result.email) {
     try {
       const dateLabel = formatMonthDay(result.slotDate);
+      const calendarEvent =
+        result.status === "Confirmed"
+          ? buildSlotCalendarEvent({
+              sessionName: result.sessionName,
+              location: result.location,
+              slotDate: result.slotDate,
+              slotTime: result.slotTime,
+            })
+          : null;
       await sendBookingConfirmationEmail(
         result.email,
         result.status,
@@ -114,6 +147,7 @@ export async function createBooking(args: CreateBookingArgs): Promise<CreateBook
         dateLabel,
         result.sessionName,
         result.status === "Waitlist" ? result.position : undefined,
+        calendarEvent,
       );
     } catch (err) {
       console.error("Failed to send booking confirmation email", err);
@@ -144,6 +178,7 @@ export type CancelBookingResult =
       slotTime: string;
       slotDate: Date;
       sessionName: string;
+      location: string;
     }
   | { ok: false; error: "NOT_FOUND" | "MULTIPLE_MATCHES" };
 
@@ -235,6 +270,7 @@ export async function cancelBooking(args: CancelBookingArgs): Promise<CancelBook
       slotTime: match.slot.time,
       slotDate: match.slot.date,
       sessionName: match.slot.session.name,
+      location: match.slot.session.location,
     };
   });
 
@@ -258,7 +294,19 @@ export async function cancelBooking(args: CancelBookingArgs): Promise<CancelBook
     if (result.promoted && result.promoted.email) {
       try {
         const dateLabel = formatMonthDay(result.slotDate);
-        await sendPromotionEmail(result.promoted.email, result.promoted.slotTime, dateLabel, result.sessionName);
+        const calendarEvent = buildSlotCalendarEvent({
+          sessionName: result.sessionName,
+          location: result.location,
+          slotDate: result.slotDate,
+          slotTime: result.promoted.slotTime,
+        });
+        await sendPromotionEmail(
+          result.promoted.email,
+          result.promoted.slotTime,
+          dateLabel,
+          result.sessionName,
+          calendarEvent,
+        );
       } catch (err) {
          
         console.error("Failed to send promotion email", err);
@@ -367,7 +415,19 @@ export async function adminCancelBooking(bookingId: string): Promise<void> {
       });
       if (promoted?.email) {
         const dateLabel = formatMonthDay(promoted.slot.date);
-        await sendPromotionEmail(promoted.email, promoted.slot.time, dateLabel, promoted.slot.session.name);
+        const calendarEvent = buildSlotCalendarEvent({
+          sessionName: promoted.slot.session.name,
+          location: promoted.slot.session.location,
+          slotDate: promoted.slot.date,
+          slotTime: promoted.slot.time,
+        });
+        await sendPromotionEmail(
+          promoted.email,
+          promoted.slot.time,
+          dateLabel,
+          promoted.slot.session.name,
+          calendarEvent,
+        );
       }
     } catch (err) {
       console.error("Failed to send promotion email after admin cancel", err);
