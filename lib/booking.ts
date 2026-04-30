@@ -21,8 +21,8 @@ function buildSlotCalendarEvent(args: {
   const instants = getEventInstants(args.slotDate, args.slotTime);
   if (!instants) return null;
   return {
-    title: args.sessionName,
-    description: `${args.sessionName} at ${args.location}`,
+    title: `${args.sessionName} with Coach Junvie`,
+    description: `${args.sessionName} with Coach Junvie at ${args.location}`,
     location: args.location,
     start: instants.start,
     end: instants.end,
