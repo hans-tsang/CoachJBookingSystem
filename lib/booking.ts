@@ -142,6 +142,7 @@ export type CancelBookingResult =
       cancelledStatus: BookingStatus;
       promoted: { bookingId: string; name: string; email: string | null; slotTime: string } | null;
       slotTime: string;
+      slotDate: Date;
       sessionName: string;
     }
   | { ok: false; error: "NOT_FOUND" | "MULTIPLE_MATCHES" };
@@ -231,6 +232,7 @@ export async function cancelBooking(args: CancelBookingArgs): Promise<CancelBook
       cancelledStatus: match.status as BookingStatus,
       promoted,
       slotTime: match.slot.time,
+      slotDate: match.slot.date,
       sessionName: match.slot.session.name,
     };
   });
@@ -238,11 +240,8 @@ export async function cancelBooking(args: CancelBookingArgs): Promise<CancelBook
   // Send promotion email outside the DB transaction; failures must not roll back the cancel.
   if (result.ok && result.promoted && result.promoted.email) {
     try {
-      const slot = await prisma.slot.findFirst({
-        where: { bookings: { some: { id: result.promoted.bookingId } } },
-      });
-      const dateLabel = slot ? formatMonthDay(slot.date) : "";
-      await sendPromotionEmail(result.promoted.email, result.promoted.slotTime, dateLabel);
+      const dateLabel = formatMonthDay(result.slotDate);
+      await sendPromotionEmail(result.promoted.email, result.promoted.slotTime, dateLabel, result.sessionName);
     } catch (err) {
        
       console.error("Failed to send promotion email", err);
@@ -284,6 +283,8 @@ export async function markPaid(bookingId: string, paid: boolean): Promise<void> 
 
 /** Admin-initiated cancel (no name/whatsapp match). Promotes waitlist if needed. */
 export async function adminCancelBooking(bookingId: string): Promise<void> {
+  let promotedId: string | null = null;
+
   await prisma.$transaction(async (tx) => {
     const booking = await tx.booking.findUnique({ where: { id: bookingId } });
     if (!booking || booking.status === "Cancelled") return;
@@ -296,7 +297,24 @@ export async function adminCancelBooking(bookingId: string): Promise<void> {
       },
     });
     if (wasConfirmed) {
-      await promoteWaitlist(booking.slotId, tx);
+      const result = await promoteWaitlist(booking.slotId, tx);
+      promotedId = result.promotedId;
     }
   });
+
+  // Send promotion email outside the DB transaction; failures must not roll back the cancel.
+  if (promotedId) {
+    try {
+      const promoted = await prisma.booking.findUnique({
+        where: { id: promotedId },
+        include: { slot: { include: { session: true } } },
+      });
+      if (promoted?.email) {
+        const dateLabel = formatMonthDay(promoted.slot.date);
+        await sendPromotionEmail(promoted.email, promoted.slot.time, dateLabel, promoted.slot.session.name);
+      }
+    } catch (err) {
+      console.error("Failed to send promotion email after admin cancel", err);
+    }
+  }
 }

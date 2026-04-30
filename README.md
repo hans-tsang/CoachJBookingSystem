@@ -6,7 +6,7 @@ auto-promotes when someone cancels.
 
 **Stack:** Next.js 16 (App Router, Server Actions) · TypeScript (strict) ·
 Tailwind CSS v4 (`@theme`) · Prisma 5 + Postgres · Zod · bcrypt cookie auth ·
-Resend (pluggable `EmailProvider`) · Vitest · Docker.
+Gmail SMTP via Nodemailer (pluggable `EmailProvider`) · Vitest · Docker.
 
 ---
 
@@ -28,8 +28,9 @@ Resend (pluggable `EmailProvider`) · Vitest · Docker.
     to the next Saturday in a single transaction.
 - **Audit log** — every mutation (book, cancel, promote, markPaid, adminLogin,
   resetWeek) writes a row.
-- **Email** — `EmailProvider` interface with Resend implementation. Falls back to
-  a console logger when `RESEND_API_KEY` is unset (useful in dev).
+- **Email** — `EmailProvider` interface with a Gmail SMTP implementation
+  (Nodemailer). Falls back to a console logger when the `gmail` /
+  `apppassword` env vars are unset (useful in dev).
 - **Health endpoint** — `GET /api/health` pings the DB; used by Docker
   healthchecks and Cloudflare/Nginx upstream checks.
 
@@ -84,7 +85,8 @@ See `.env.example`. Highlights:
 | `DATABASE_URL`            | yes      | Postgres connection string. Example: `postgresql://user:pass@host:5432/db?sslmode=require`. |
 | `SESSION_SECRET`          | yes      | ≥ 16 chars. Used to HMAC-sign session cookies. Rotate to log everyone out.             |
 | `ADMIN_PASSWORD_INITIAL`  | first run only | Used **only** if no admin password hash exists. Set once, then change in admin. |
-| `RESEND_API_KEY`          | optional | If unset, emails are logged to stdout instead of sent.                                 |
+| `gmail`                   | optional | Gmail address to send from. If unset, emails are logged to stdout instead of sent.    |
+| `apppassword`             | optional | Google [App Password](https://myaccount.google.com/apppasswords) for the above account. |
 | `EMAIL_FROM`              | optional | e.g. `HYROX <bookings@chillwithhans.com>`                                              |
 | `OWNER_EMAIL`             | optional | Reserved for future notifications.                                                     |
 | `PUBLIC_BASE_URL`         | optional | Used in shared URLs.                                                                   |
@@ -126,8 +128,9 @@ database — **Neon** (free tier) and **Vercel Postgres** are both good fits.
    | `DATABASE_URL`           | Your Postgres connection string                     |
    | `SESSION_SECRET`         | `openssl rand -hex 32`                              |
    | `ADMIN_PASSWORD_INITIAL` | A password you choose for the first admin login    |
-   | `RESEND_API_KEY`         | (optional) Resend API key, blank to log instead    |
-   | `EMAIL_FROM`             | (optional) e.g. `HYROX <onboarding@resend.dev>`     |
+   | `gmail`                  | (optional) Gmail address to send from, blank to log instead |
+   | `apppassword`            | (optional) Google App Password for that Gmail account |
+   | `EMAIL_FROM`             | (optional) e.g. `HYROX <bookings@chillwithhans.com>` |
    | `OWNER_EMAIL`            | (optional) Your email                              |
    | `PUBLIC_BASE_URL`        | (optional) Your final URL                          |
 
@@ -160,7 +163,8 @@ cat > .env <<'EOF'
 DATABASE_URL=postgresql://user:pass@host:5432/db?sslmode=require
 SESSION_SECRET=$(openssl rand -hex 32)
 ADMIN_PASSWORD_INITIAL=change-me-on-first-login
-RESEND_API_KEY=
+gmail=
+apppassword=
 EMAIL_FROM=HYROX <bookings@chillwithhans.com>
 PUBLIC_BASE_URL=https://hyrox.chillwithhans.com
 EOF
@@ -211,7 +215,7 @@ lib/
   auth.ts            cookie session + bcrypt
   booking.ts         createBooking / cancelBooking / promoteWaitlist / resetWeek
   roster.ts          formatRoster (pure, tested)
-  email.ts           EmailProvider + Resend impl
+  email.ts           EmailProvider + Gmail SMTP impl
   settings.ts        get/set typed settings
   validators.ts      Zod schemas
   phone.ts           normalizePhone
