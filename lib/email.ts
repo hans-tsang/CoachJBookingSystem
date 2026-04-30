@@ -164,6 +164,24 @@ function buildBookingConfirmationHtml(
   }
 }
 
+function buildCancellationHtml(
+  sessionName: string,
+  dateLabel: string,
+  slotTime: string,
+  byAdmin: boolean,
+): string {
+  const banner = `<span style="color:#ffffff;font-size:22px;font-weight:700;">👋 Sorry to see you go</span>`;
+  const intro = byAdmin
+    ? `Your booking has been cancelled by Coach J. If this was unexpected or you'd like to rebook, just reply to this email or sign up again.`
+    : `Your booking has been cancelled. Sorry to see you go — hope to see you again at a future session!`;
+  const body = `
+    <p style="margin:0;color:#3f3f46;font-size:15px;line-height:1.6;">
+      ${intro}
+    </p>
+    ${sessionDetailsCard(sessionName, dateLabel, slotTime)}`;
+  return emailShell("Booking cancelled", "#ef4444", banner, body);
+}
+
 function buildPromotionHtml(sessionName: string, dateLabel: string, slotTime: string): string {
   const banner = `<span style="color:#ffffff;font-size:22px;font-weight:700;">🎉 You're in — spot confirmed!</span>`;
   const body = `
@@ -239,4 +257,38 @@ export async function sendPromotionEmail(
   ].join("\n");
   const html = buildPromotionHtml(sessionName, dateLabel, slotTime);
   return provider.send({ to, subject, text, html });
+}
+
+export async function sendCancellationEmail(
+  to: string,
+  slotTime: string,
+  dateLabel: string,
+  sessionName: string,
+  byAdmin: boolean,
+) {
+  const provider = getEmailProvider();
+  const subject = `Booking cancelled — ${sessionName} (${dateLabel} ${slotTime})`;
+  const lines = byAdmin
+    ? [
+        `Your booking has been cancelled by Coach J.`,
+        ``,
+        `Session: ${sessionName}`,
+        `Date: ${dateLabel}`,
+        `Time: ${slotTime}`,
+        ``,
+        `If this was unexpected or you'd like to rebook, just reply to this email or sign up again.`,
+        ``,
+        `— Coach J`,
+      ]
+    : [
+        `Your booking has been cancelled. Sorry to see you go — hope to see you again at a future session!`,
+        ``,
+        `Session: ${sessionName}`,
+        `Date: ${dateLabel}`,
+        `Time: ${slotTime}`,
+        ``,
+        `— Coach J`,
+      ];
+  const html = buildCancellationHtml(sessionName, dateLabel, slotTime, byAdmin);
+  return provider.send({ to, subject, text: lines.join("\n"), html });
 }
