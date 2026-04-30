@@ -72,7 +72,8 @@ export async function createBookingAction(
     if (result.error === "DUPLICATE") {
       return {
         ok: false,
-        error: "You've already booked this slot. If you need help, please contact Coach J.",
+        error:
+          "This WhatsApp number already has a booking for this session. Each person can only book one slot per session. If you need to change slots, cancel your existing booking first.",
       };
     }
     return { ok: false, error: "That slot is no longer available. Please pick another." };

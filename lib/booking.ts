@@ -30,17 +30,16 @@ export async function createBooking(args: CreateBookingArgs): Promise<CreateBook
     });
     if (!slot) return { ok: false, error: "SLOT_NOT_FOUND" } as const;
 
-    // Duplicate detection: same slot + same digits-only whatsapp + case-insensitive name,
-    // ignoring already-cancelled rows.
-    const existing = await tx.booking.findMany({
+    // One person, one whatsapp per session: reject if this whatsapp already
+    // has any non-cancelled booking on any slot in the same session.
+    const existing = await tx.booking.findFirst({
       where: {
-        slotId: args.slotId,
         whatsapp: args.whatsapp,
         status: { not: "Cancelled" },
+        slot: { sessionId: slot.sessionId },
       },
     });
-    const lowerName = args.name.trim().toLowerCase();
-    if (existing.some((b) => b.name.trim().toLowerCase() === lowerName)) {
+    if (existing) {
       return { ok: false, error: "DUPLICATE" } as const;
     }
 
